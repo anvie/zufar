@@ -1,0 +1,12 @@
+[package]
+name = "zufar"
+version = "0.1.0"
+authors = ["robin <r@nosql.asia>"]
+
+
+[dependencies]
+docopt = "0.6.*"
+docopt_macros = "0.6"
+rustc-serialize = "0.3"  # if you're using `derive(RustcDecodable)`
+toml = "0.1"
+
