@@ -4,8 +4,9 @@
 extern crate rustc_serialize;
 extern crate docopt;
 extern crate toml;
+extern crate msgpack;
 
-mod internode;
+
 
 use std::net::TcpListener;
 use std::thread;
@@ -16,17 +17,8 @@ use docopt::Docopt;
 
 use toml::Value;
 
-//// macro /////
-
-
-macro_rules! err {
-    ( $code:expr, $( $t:expr ),* ) => {{
-        let _ = write!(&mut std::io::stderr(), "\nERROR ({}): ", $code);
-        let _ = writeln!(&mut std::io::stderr(), $( $t ),* );
-        std::process::exit($code);
-    }};
-}
-
+#[macro_use] mod util;
+mod internode;
 
 
 docopt!(Args derive Debug, "
@@ -45,29 +37,29 @@ Options:
 
 
 fn main() {
-    
+
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
     println!("{:?}", args);
-    
+
     if (&args).flag_version{
         println!("version 0.1.0");
         return;
     }
-    
+
     let mut host_n_port = format!("{}:{}", args.arg_host, args.arg_port.unwrap_or(9123));
     let mut node_address:String = String::new();
-    
+
     if (&args.flag_cfg).len() > 0 {
         match File::open(&args.flag_cfg) {
             Ok(mut f) => {
                 let mut s = String::new();
                 let _ = f.read_to_string(&mut s);
-                
+
                 //println!("cfg content: {}", s);
-                
+
                 let cfg = toml::Parser::new(&*s).parse().unwrap();
                 println!("cfg: {:?}", cfg);
-                
+
                 match cfg.get("zufar"){
                     Some(&Value::Table(ref section)) => {
                         match section.get("listen_address"){
@@ -90,22 +82,22 @@ fn main() {
                             },
                             _ => err!(5, "No `seeds` in configuration.")
                         }
-                        
+
                     },
                     _ => err!(3, "No [zufar] section")
                 }
-                
+
             },
             Err(e) => {
                 err!(4, "error: {}", e);
             }
         }
     }
-    
+
     if node_address.len() > 0 {
         internode::setup_internode_communicator(&node_address);
     }
-        
+
     if args.cmd_serve {
         serve(&host_n_port);
     }
