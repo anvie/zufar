@@ -5,7 +5,7 @@ extern crate rustc_serialize;
 extern crate docopt;
 extern crate toml;
 extern crate msgpack;
-
+extern crate byteorder;
 
 
 use std::net::TcpListener;
@@ -18,7 +18,10 @@ use docopt::Docopt;
 use toml::Value;
 
 #[macro_use] mod util;
+mod encd;
 mod internode;
+
+
 
 
 docopt!(Args derive Debug, "
@@ -95,7 +98,8 @@ fn main() {
     }
 
     if node_address.len() > 0 {
-        internode::setup_internode_communicator(&node_address);
+        let inode = internode::InternodeService::new();
+        inode.setup_internode_communicator(&node_address);
     }
 
     if args.cmd_serve {

@@ -9,6 +9,7 @@ docopt = "0.6.*"
 docopt_macros = "0.6"
 rustc-serialize = "0.3"  # if you're using `derive(RustcDecodable)`
 toml = "0.1"
+byteorder = "*"
 
 [dependencies.msgpack]
 git = "https://github.com/mneumann/rust-msgpack.git"
