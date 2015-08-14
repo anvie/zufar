@@ -280,11 +280,13 @@ impl InternodeService {
 
 
                     //let mut _self = z.lock().unwrap();
-                    for guid in to_remove {
-                        let idx = _self.node_index(guid) as usize;
+                    for guid in &to_remove {
+                        let idx = _self.node_index(*guid) as usize;
                         _self.routing_tables.swap_remove(idx);
                     }
-                    debug!("rts count now: {}", _self.routing_tables.len());
+                    if to_remove.len() > 0 {
+                        debug!("rts count now: {}", _self.routing_tables.len());
+                    }
                 }
             
                 
