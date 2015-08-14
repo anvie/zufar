@@ -4,8 +4,8 @@ use std::thread;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::io::prelude::*;
-use std::error;
-use std::str;
+//use std::error;
+//use std::str;
 use std::sync::{Arc, Mutex};
 
 
@@ -28,7 +28,7 @@ impl RoutingTable {
             port: port
         }
     }
-    
+
     pub fn get_host_n_port(&self) -> String {
         format!("{}:{}", &self.ip_address, self.port).clone()
     }
@@ -41,6 +41,7 @@ pub struct InternodeService {
 }
 
 type ZResult = Result<i32, &'static str>;
+
 
 impl InternodeService {
 
@@ -70,7 +71,7 @@ impl InternodeService {
             let listener = TcpListener::bind(&*node_address).unwrap();
             println!("internode comm listening at {} ...", node_address);
             for stream in listener.incoming() {
-                let mut z = x.clone();
+                let z = x.clone();
                 thread::spawn(move || {
 
                     let mut stream = stream.unwrap();
@@ -103,21 +104,21 @@ impl InternodeService {
                                 let s:Vec<&str> = data.split("|").collect();
 
                                 debug!("data splited: {:?}", s);
-                                
+
                                 // check for version
                                 let version = s[0];
-                                
+
                                 if !version.starts_with("v"){
                                     warn!("invalid protocol version: {}", version);
                                     break 'the_loop;
                                 }
-                                
+
                                 debug!("connected node version: {}", version);
-                                
+
                                 let cmd = s[1];
-                                
+
                                 debug!("got cmd: {}", &cmd);
-                                
+
                                 match z.process_cmd(cmd, &mut stream){
                                     Ok(i) if i != 0 => {
                                         break 'the_loop;
@@ -148,14 +149,36 @@ impl InternodeService {
             }
         });
     }
-    
+
+    fn write(&self, stream: &mut TcpStream, data: &String){
+        let _ = stream.write(&*self.the_encd.encode(data).ok().unwrap());
+    }
+
     fn process_cmd(&mut self, cmd: &str, stream: &mut TcpStream) -> ZResult {
         match cmd {
             "join" => {
                 trace!("join cmd recvd.");
+
+                match self.get_rt(stream){
+                    Some(rt) => {
+                        warn!("ip {} already joined as guid {}", rt.ip_address, rt.guid);
+
+                        // just send existing guid
+                        let data = &format!("v1|guid|{}\n", rt.guid);
+                        //stream.write(&*self.the_encd.encode(data).ok().unwrap());
+                        self.write(stream, data);
+
+                        return Ok(0);
+                    },
+                    None => ()
+                }
+
                 let guid = self.generate_guid();
+
+                debug!("generated guid: {}", guid);
+
                 let data = &format!("v1|guid|{}\n", guid);
-                
+
                 let (ip_addr, port) = match stream.local_addr() {
                     Ok(sock_addr) => {
                         (format!("{}",sock_addr.ip()), sock_addr.port())
@@ -165,30 +188,40 @@ impl InternodeService {
                         return Err("cannot get peer address");
                     }
                 };
-                
+
                 debug!("peer addr: {}:{}", ip_addr, port);
-                
+
                 self.routing_tables.push(RoutingTable::new(guid, ip_addr, port));
-                
-                stream.write(&*self.the_encd.encode(data).ok().unwrap());
+
+                //stream.write(&*self.the_encd.encode(data).ok().unwrap());
+
+                self.write(stream, data);
+
                 Ok(0)
             },
             "leave" => {
                 trace!("leave cmd recvd.");
-                match self.get_rt(stream) {
-                    Some(rt) => {
-                        let idx = self.node_index(rt.guid) as usize;
-                        self.get_routing_tables().swap_remove(idx);
-                    },
-                    None => ()
+
+                let guid = self.get_guid_from_stream(stream);
+                trace!("guid: {}", guid);
+
+                if guid > 0 {
+                    let idx = self.node_index(guid) as usize;
+                    let x = self.routing_tables.swap_remove(idx);
+                    debug!("removing node {:?} from routing tables", x);
                 }
-                
+
                 Ok(1)
             },
             "copy-rt" => { // copy routing tables
-                trace!("copy routing tables...");
-                println!("routing tables: {:?}", self.routing_tables);
-                Ok(0)
+
+                if self.get_guid_from_stream(stream) > 0 {
+                    trace!("copy routing tables...");
+                    println!("routing tables: {:?}", self.routing_tables);
+                    Ok(0)
+                }else{
+                    Err("not registered as node")
+                }
             },
             x => {
                 debug!("unknwon cmd: {}", x);
@@ -196,11 +229,18 @@ impl InternodeService {
             }
         }
     }
-    
+
+    fn get_guid_from_stream(&self, stream: &TcpStream) -> u32 {
+        match self.get_rt(stream) {
+            Some(rt) => rt.guid,
+            None => 0,
+        }
+    }
+
     fn get_routing_tables<'a>(&'a mut self) -> &'a mut Vec<RoutingTable> {
         &mut self.routing_tables
     }
-    
+
     fn get_rt<'a>(&'a self, stream: &TcpStream) -> Option<&'a RoutingTable> {
         let (ip_addr, port) = match stream.local_addr() {
             Ok(sock_addr) => {
@@ -211,30 +251,24 @@ impl InternodeService {
                 panic!("cannot get peer address");
             }
         };
-        match self.routing_tables.binary_search_by(|p| p.ip_address.cmp(&ip_addr)){
-            Ok(i) => Some(&self.routing_tables[i]),
-            Err(_) => None
-        }
+        (&self.routing_tables).iter().find(|&r| r.ip_address == ip_addr && r.port == port)
     }
-    
-    fn node_index(&self, id:u32) -> u32 {
+
+    fn node_index(&self, id:u32) -> i32 {
         match self.routing_tables.binary_search_by(|p| p.guid.cmp(&id)){
-            Ok(i) => i as u32,
+            Ok(i) => i as i32,
             Err(_) => -1
         }
     }
-    
-    fn is_node_exists(&self, id:u32) -> bool {
-        match self.routing_tables.binary_search_by(|p| p.guid.cmp(&id)){
-            Ok(_) => true,
-            Err(_) => false
-        }
+
+    fn is_node_registered(&self, id:u32) -> bool {
+        self.node_index(id) > 0
     }
-    
+
     fn generate_guid(&self) -> u32 {
         let mut gid = self.my_guid + 1;
         //let mut done = false;
-        while self.is_node_exists(gid) {
+        while self.is_node_registered(gid) {
             gid = gid + 1;
         }
         gid

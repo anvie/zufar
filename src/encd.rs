@@ -47,7 +47,7 @@ impl MessageEncoderDecoder<String, String, &'static str> for PlainTextEncoderDec
     fn decode<'a>(&self, bytes: &'a [u8]) -> Result<String, &'static str> {
         match str::from_utf8(bytes){
             Ok(d) => Ok(d.trim().to_string()),
-            Err(e) => Err("Cannot decode from utf8")
+            Err(_) => Err("Cannot decode from utf8")
         }
     }
 }
