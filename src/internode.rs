@@ -96,9 +96,9 @@ impl InternodeService {
                                 // let data = String::from_utf8(buff[0..count].to_vec()).unwrap();
                                 let data = z.the_encd.decode(&buff[0..count]).ok().unwrap();
 
-                                debug!("read {} bytes : {}", count, &data);
+                                debug!("read {} bytes : {:?}", count, &data);
                                 if data.len() == 0 {
-                                    break 'the_loop;
+                                    continue 'the_loop;
                                 }
 
                                 let s:Vec<&str> = data.split("|").collect();
@@ -110,6 +110,11 @@ impl InternodeService {
 
                                 if !version.starts_with("v"){
                                     warn!("invalid protocol version: {}", version);
+                                    break 'the_loop;
+                                }
+
+                                if s.len() == 1 {
+                                    warn!("invalid request, no cmd provided.");
                                     break 'the_loop;
                                 }
 
@@ -218,6 +223,15 @@ impl InternodeService {
                 if self.get_guid_from_stream(stream) > 0 {
                     trace!("copy routing tables...");
                     println!("routing tables: {:?}", self.routing_tables);
+
+                    let rtb:Vec<String> = self.routing_tables.iter()
+                        .map(|rt| format!("{},{},{}", rt.guid, rt.ip_address, rt.port))
+                        .collect()
+                        ;
+                    let data = format!("v1|rt|{}", rtb.join("|"));
+
+                    self.write(stream, &data);
+
                     Ok(0)
                 }else{
                     Err("not registered as node")
