@@ -2,6 +2,7 @@
 use std;
 use std::thread;
 use std::net::TcpListener;
+use std::net::TcpStream;
 use std::io::prelude::*;
 use std::error;
 use std::str;
@@ -12,23 +13,34 @@ use encd;
 
 use encd::MessageEncoderDecoder;
 
+#[derive(Debug)]
 struct RoutingTable {
-    guid: i32,
+    guid: u32,
     ip_address: String,
-    port: i32,
+    port: u16,
 }
 
 impl RoutingTable {
+    pub fn new(guid: u32, ip_address: String, port: u16) -> RoutingTable {
+        RoutingTable {
+            guid: guid,
+            ip_address: ip_address,
+            port: port
+        }
+    }
+    
     pub fn get_host_n_port(&self) -> String {
         format!("{}:{}", &self.ip_address, self.port).clone()
     }
 }
 
 pub struct InternodeService {
-    my_guid: i32,
+    my_guid: u32,
     the_encd: encd::PlainTextEncoderDecoder,
     routing_tables: Vec<RoutingTable>
 }
+
+type ZResult = Result<i32, &'static str>;
 
 impl InternodeService {
 
@@ -40,7 +52,7 @@ impl InternodeService {
         }
     }
 
-    pub fn setup_internode_communicator(&self, node_address: &String){
+    pub fn setup_internode_communicator(&mut self, node_address: &String){
         // let arr = vec!["str1".to_string(), "str2".to_string()];
         // let str = msgpack::Encoder::to_msgpack(&arr).ok().unwrap();
         // println!("Encoded: {:?}", str);
@@ -50,7 +62,7 @@ impl InternodeService {
 
         let node_address = node_address.clone();
 
-        let xx:&'static InternodeService = unsafe{ std::mem::transmute(self) };
+        let xx:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
         let x = Arc::new(Mutex::new(xx));
 
 
@@ -58,7 +70,7 @@ impl InternodeService {
             let listener = TcpListener::bind(&*node_address).unwrap();
             println!("internode comm listening at {} ...", node_address);
             for stream in listener.incoming() {
-                let z = x.clone();
+                let mut z = x.clone();
                 thread::spawn(move || {
 
                     let mut stream = stream.unwrap();
@@ -78,23 +90,49 @@ impl InternodeService {
                             Ok(count) if count == 0 => break 'the_loop,
                             Ok(count) => {
 
-                                let z = z.lock().unwrap();
+                                let mut z = z.lock().unwrap();
 
                                 // let data = String::from_utf8(buff[0..count].to_vec()).unwrap();
                                 let data = z.the_encd.decode(&buff[0..count]).ok().unwrap();
 
-                                println!("read {} bytes : {}", count, &data);
+                                debug!("read {} bytes : {}", count, &data);
                                 if data.len() == 0 {
                                     break 'the_loop;
                                 }
 
                                 let s:Vec<&str> = data.split("|").collect();
 
-                                println!("data splited: {:?}", s);
+                                debug!("data splited: {:?}", s);
+                                
+                                // check for version
+                                let version = s[0];
+                                
+                                if !version.starts_with("v"){
+                                    warn!("invalid protocol version: {}", version);
+                                    break 'the_loop;
+                                }
+                                
+                                debug!("connected node version: {}", version);
+                                
+                                let cmd = s[1];
+                                
+                                debug!("got cmd: {}", &cmd);
+                                
+                                match z.process_cmd(cmd, &mut stream){
+                                    Ok(i) if i != 0 => {
+                                        break 'the_loop;
+                                    },
+                                    Ok(0) => (),
+                                    Ok(_) => (),
+                                    Err(e) => {
+                                        error!("error: {}", e);
+                                        break 'the_loop;
+                                    }
+                                }
 
-                                let data = z.the_encd.encode(&data).ok().unwrap();
-                                stream.write(&*data).unwrap();
-                                let _ = stream.write(b"\n");
+                                // let data = z.the_encd.encode(&data).ok().unwrap();
+                                // stream.write(&*data).unwrap();
+                                // let _ = stream.write(b"\n");
 
                             },
                             Err(e) => {
@@ -109,6 +147,97 @@ impl InternodeService {
                 });
             }
         });
+    }
+    
+    fn process_cmd(&mut self, cmd: &str, stream: &mut TcpStream) -> ZResult {
+        match cmd {
+            "join" => {
+                trace!("join cmd recvd.");
+                let guid = self.generate_guid();
+                let data = &format!("v1|guid|{}\n", guid);
+                
+                let (ip_addr, port) = match stream.local_addr() {
+                    Ok(sock_addr) => {
+                        (format!("{}",sock_addr.ip()), sock_addr.port())
+                    },
+                    Err(e) => {
+                        error!("{}", e);
+                        return Err("cannot get peer address");
+                    }
+                };
+                
+                debug!("peer addr: {}:{}", ip_addr, port);
+                
+                self.routing_tables.push(RoutingTable::new(guid, ip_addr, port));
+                
+                stream.write(&*self.the_encd.encode(data).ok().unwrap());
+                Ok(0)
+            },
+            "leave" => {
+                trace!("leave cmd recvd.");
+                match self.get_rt(stream) {
+                    Some(rt) => {
+                        let idx = self.node_index(rt.guid) as usize;
+                        self.get_routing_tables().swap_remove(idx);
+                    },
+                    None => ()
+                }
+                
+                Ok(1)
+            },
+            "copy-rt" => { // copy routing tables
+                trace!("copy routing tables...");
+                println!("routing tables: {:?}", self.routing_tables);
+                Ok(0)
+            },
+            x => {
+                debug!("unknwon cmd: {}", x);
+                Err("unknown cmd")
+            }
+        }
+    }
+    
+    fn get_routing_tables<'a>(&'a mut self) -> &'a mut Vec<RoutingTable> {
+        &mut self.routing_tables
+    }
+    
+    fn get_rt<'a>(&'a self, stream: &TcpStream) -> Option<&'a RoutingTable> {
+        let (ip_addr, port) = match stream.local_addr() {
+            Ok(sock_addr) => {
+                (format!("{}",sock_addr.ip()), sock_addr.port())
+            },
+            Err(e) => {
+                error!("{}", e);
+                panic!("cannot get peer address");
+            }
+        };
+        match self.routing_tables.binary_search_by(|p| p.ip_address.cmp(&ip_addr)){
+            Ok(i) => Some(&self.routing_tables[i]),
+            Err(_) => None
+        }
+    }
+    
+    fn node_index(&self, id:u32) -> u32 {
+        match self.routing_tables.binary_search_by(|p| p.guid.cmp(&id)){
+            Ok(i) => i as u32,
+            Err(_) => -1
+        }
+    }
+    
+    fn is_node_exists(&self, id:u32) -> bool {
+        match self.routing_tables.binary_search_by(|p| p.guid.cmp(&id)){
+            Ok(_) => true,
+            Err(_) => false
+        }
+    }
+    
+    fn generate_guid(&self) -> u32 {
+        let mut gid = self.my_guid + 1;
+        //let mut done = false;
+        while self.is_node_exists(gid) {
+            gid = gid + 1;
+        }
+        gid
     }
 
 }

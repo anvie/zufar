@@ -1,12 +1,14 @@
 #![feature(plugin)]
 #![plugin(docopt_macros)]
+#![feature(ip_addr)]
 
 extern crate rustc_serialize;
 extern crate docopt;
 extern crate toml;
 extern crate msgpack;
 extern crate byteorder;
-
+#[macro_use] extern crate log;
+extern crate env_logger;
 
 use std::net::TcpListener;
 use std::thread;
@@ -40,6 +42,8 @@ Options:
 
 
 fn main() {
+
+    env_logger::init().unwrap();
 
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
     println!("{:?}", args);
@@ -98,7 +102,7 @@ fn main() {
     }
 
     if node_address.len() > 0 {
-        let inode = internode::InternodeService::new();
+        let mut inode = internode::InternodeService::new();
         inode.setup_internode_communicator(&node_address);
     }
 
