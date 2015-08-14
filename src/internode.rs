@@ -219,16 +219,25 @@ impl InternodeService {
                 let connected_seed_addr = format!("{}", pa.ip());
                 info!("added {}:{} to the rts with guid {}", connected_seed_addr, pa.port(), seed_guid);
                 self.routing_tables.push(RoutingTable::new(seed_guid, connected_seed_addr, pa.port()));
+                debug!("rts count now: {}", self.routing_tables.len());
             },
             &"rt" => {
-                //@TODO(robin): add all by iterate
-                let s:Vec<&str> = s[2].split(",").collect();
-                let guid:u32 = s[0].parse().unwrap();
-                let ip_addr = s[1].to_string();
-                let port:u16 = s[2].parse().unwrap();
-                if guid != self.my_guid {
-                    self.routing_tables.push(RoutingTable::new(guid, ip_addr, port));
+                
+                let ss = &s[2..];
+                
+                for s in ss {
+                    let s:Vec<&str> = s.split(",").collect();
+                    let guid:u32 = s[0].parse().unwrap();
+                    let ip_addr = s[1].to_string();
+                    let port:u16 = s[2].parse().unwrap();
+                    if guid != self.my_guid {
+                        info!("added {}:{} to the rts with guid {}", ip_addr, port, guid);
+                        self.routing_tables.push(RoutingTable::new(guid, ip_addr, port));
+                    }
                 }
+                debug!("rts count now: {}", self.routing_tables.len());
+                
+                
             },
             x => {
                 warn!("unknown cmd: {}", x)
