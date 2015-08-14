@@ -164,18 +164,17 @@ impl InternodeService {
             match TcpStream::connect(addr){
                 Ok(ref mut stream) => {
                     
-                    fn ignore_all(stream:&mut TcpStream){
+                    fn write_ignore(stream:&mut TcpStream, data:&str){
+                        let _ = stream.write(data.as_bytes());
                         let _ = stream.flush();
                         let mut buff = vec![0u8; 100];
                         stream.read(&mut buff);
                         debug!("buff: {}", String::from_utf8(buff).unwrap());
                     }
                     
-                    let data = format!("v1|join|{}", my_node_address);
-                    let _ = stream.write(data.as_bytes());
-                    ignore_all(stream);
-                    let _ = stream.write(b"v1|copy-rt");
-                    ignore_all(stream);
+                    //let data = format!("v1|join|{}", my_node_address);
+                    write_ignore(stream, &*format!("v1|join|{}", my_node_address));
+                    write_ignore(stream, "v1|copy-rt");
                     
                     trace!("join network done.");
                 },
