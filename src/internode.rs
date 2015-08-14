@@ -244,6 +244,7 @@ impl InternodeService {
         let z = arc_self.clone();
         
         thread::spawn(move || {
+            //let mut cycle = 0;
             loop {
                 
                 debug!("checking network health...");
@@ -292,7 +293,21 @@ impl InternodeService {
                 
                 debug!("health checking done.");
                 
+                // @TODO(robin): code this
+                // {
+                //     let mut _self = z.lock().unwrap();
+                //     if cycle > 10 {
+                //         cycle = 0;
+                // 
+                //         _self.send_cmd_and_handle(stream, )
+                // 
+                //     }
+                //     cycle = cycle + 1;
+                // }
+                
+                
                 thread::sleep_ms(15000);
+                
             }
         });
     }
