@@ -31,13 +31,12 @@ Zufar
 
 Usage:
   zufar serve <host> <port>
-  zufar serve --cfg <CONFIGFILE>
+  zufar serve <configfile>
   zufar --version
 
 Options:
   -h --help             Show this screen.
   --version             Show version.
-  --cfg CONFIGFILE      file config to init from.
 ", arg_port: Option<i32>);
 
 
@@ -55,9 +54,10 @@ fn main() {
 
     let mut host_n_port = format!("{}:{}", args.arg_host, args.arg_port.unwrap_or(9123));
     let mut node_address:String = String::new();
+    let mut seeds:Vec<String> = Vec::new();
 
-    if (&args.flag_cfg).len() > 0 {
-        match File::open(&args.flag_cfg) {
+    if (&args.arg_configfile).len() > 0 {
+        match File::open(&args.arg_configfile) {
             Ok(mut f) => {
                 let mut s = String::new();
                 let _ = f.read_to_string(&mut s);
@@ -81,10 +81,15 @@ fn main() {
                             _ => err!(5, "No `node_address` in configuration.")
                         }
                         match section.get("seeds"){
-                            Some(&Value::Array(ref seeds)) => {
+                            Some(&Value::Array(ref _seeds)) => {
                                 println!("seeds: ");
-                                for seed in seeds {
+                                for seed in _seeds {
                                     println!(" + {}", seed);
+                                    match seed {
+                                        &Value::String(ref seed) => seeds.push(seed.clone()),
+                                        _ => ()
+                                    }
+                                    
                                 }
                             },
                             _ => err!(5, "No `seeds` in configuration.")
@@ -103,7 +108,7 @@ fn main() {
 
     if node_address.len() > 0 {
         let mut inode = internode::InternodeService::new();
-        inode.setup_internode_communicator(&node_address);
+        inode.setup_internode_communicator(&node_address, seeds);
     }
 
     if args.cmd_serve {
