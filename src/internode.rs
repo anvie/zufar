@@ -58,7 +58,7 @@ impl InternodeService {
     pub fn setup_internode_communicator(&mut self, node_address: &String, seeds:Vec<String>){
         
         let node_address = node_address.clone();
-        
+        //self.my_node_address = node_address.clone();
     
         //let _self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
 
@@ -68,11 +68,6 @@ impl InternodeService {
             match TcpStream::connect(addr){
                 Ok(ref mut stream) => {
 
-                    //let arc_self = arc_self.clone();
-                    //let mut _self = arc_self.lock().unwrap();
-                    //let ref mut _self = &mut static_self;
-
-                    //let data = format!("v1|join|{}", my_node_address);
                     self.send_cmd_and_handle(stream, &*format!("v1|join|{}", node_address));
                     self.send_cmd_and_handle(stream, "v1|copy-rt");
 
@@ -127,13 +122,17 @@ impl InternodeService {
                                     continue 'the_loop;
                                 }
                                 
-                                if data == "ping" {
-                                    info!("got ping from {}", stream.peer_addr().ok().unwrap());
+                                let s:Vec<&str> = data.trim().split("|").collect();
+                                
+                                if s[0] == "ping" {
+                                    if s.len() == 2 && s[1].len() > 0 {
+                                        info!("got ping from {} (node-{})", stream.peer_addr().ok().unwrap(), s[1]);
+                                    }else{
+                                        info!("got ping from {} (node-??)", stream.peer_addr().ok().unwrap());
+                                    }
                                     z.write(&mut stream, "pong");
                                     continue 'the_loop;
                                 }
-
-                                let s:Vec<&str> = data.split("|").collect();
 
                                 debug!("data splited: {:?}", s);
 
@@ -203,14 +202,26 @@ impl InternodeService {
         
         debug!("buff: {}", resp);
         
-        let s:Vec<&str> = resp.split("|").collect();
+        let s:Vec<&str> = resp.trim().split("|").collect();
         
         if s.len() < 2 {
             return;
         }
         
         match &s[1] {
+            &"guid" => {
+                self.my_guid = s[2].parse().unwrap();
+                info!("my guid is {}", self.my_guid);
+                
+                // add first connected seed to routing tables
+                let seed_guid:u32 = s[3].parse().unwrap();
+                let pa = &stream.peer_addr().ok().unwrap();
+                let connected_seed_addr = format!("{}", pa.ip());
+                info!("added {}:{} to the rts with guid {}", connected_seed_addr, pa.port(), seed_guid);
+                self.routing_tables.push(RoutingTable::new(seed_guid, connected_seed_addr, pa.port()));
+            },
             &"rt" => {
+                //@TODO(robin): add all by iterate
                 let s:Vec<&str> = s[2].split(",").collect();
                 let guid:u32 = s[0].parse().unwrap();
                 let ip_addr = s[1].to_string();
@@ -248,7 +259,7 @@ impl InternodeService {
                         let addr:SocketAddr = format!("{}:{}", rt.ip_address, rt.port).parse().unwrap();
                         match TcpStream::connect(addr){
                             Ok(ref mut stream) => {
-                                let _ = stream.write(b"ping");
+                                let _ = stream.write(format!("ping|{}", _self.my_guid).as_bytes());
                                 let mut buff = vec![0u8; 100];
                                 match stream.read(&mut buff) {
                                     Ok(count) if count > 0 => {
@@ -271,8 +282,9 @@ impl InternodeService {
                     //let mut _self = z.lock().unwrap();
                     for guid in to_remove {
                         let idx = _self.node_index(guid) as usize;
-                        &_self.routing_tables.swap_remove(idx);
+                        _self.routing_tables.swap_remove(idx);
                     }
+                    debug!("rts count now: {}", _self.routing_tables.len());
                 }
             
                 
@@ -319,7 +331,7 @@ impl InternodeService {
                         warn!("ip {}:{} already joined as guid {}", rt.ip_address, rt.port, rt.guid);
 
                         // just send existing guid
-                        let data = &format!("v1|guid|{}\n", rt.guid);
+                        let data = &format!("v1|guid|{}|{}\n", rt.guid, self.my_guid);
                         //stream.write(&*self.the_encd.encode(data).ok().unwrap());
                         self.write(stream, data);
 
@@ -332,7 +344,7 @@ impl InternodeService {
 
                 debug!("generated guid: {}", guid);
 
-                let data = &format!("v1|guid|{}\n", guid);
+                let data = &format!("v1|guid|{}|{}\n", guid, self.my_guid);
 
                 self.routing_tables.push(RoutingTable::new(guid, ip_addr, port));
 
