@@ -5,7 +5,7 @@ use std::net::TcpListener;
 use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 //use std::error;
-//use std::str;
+use std::str;
 use std::sync::{Arc, Mutex};
 
 
@@ -59,17 +59,45 @@ impl InternodeService {
         
         let node_address = node_address.clone();
         
-        let static_self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
-        let arc_self = Arc::new(Mutex::new(static_self));
-        
-        InternodeService::setup_network_keeper(&arc_self);
-        
-        let my_node_address = node_address.clone();
+    
+        //let _self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
 
+        // join the network
+        for seed in &seeds {
+            let addr:SocketAddr = seed.parse().unwrap();
+            match TcpStream::connect(addr){
+                Ok(ref mut stream) => {
+
+                    //let arc_self = arc_self.clone();
+                    //let mut _self = arc_self.lock().unwrap();
+                    //let ref mut _self = &mut static_self;
+
+                    //let data = format!("v1|join|{}", my_node_address);
+                    self.send_cmd_and_handle(stream, &*format!("v1|join|{}", node_address));
+                    self.send_cmd_and_handle(stream, "v1|copy-rt");
+
+                    trace!("join network done.");
+                },
+                Err(_) => {
+                }
+            }
+        }
+    
+        
+        //let my_node_address = node_address.clone();
+
+        let static_self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
+        
         thread::spawn(move || {
+            
+            let arc_self = Arc::new(Mutex::new(static_self));
+            InternodeService::setup_network_keeper(&arc_self);
+            
+            
             let listener = TcpListener::bind(&*node_address).unwrap();
             println!("internode comm listening at {} ...", node_address);
             for stream in listener.incoming() {
+                
                 let z = arc_self.clone();
                 thread::spawn(move || {
 
@@ -158,31 +186,44 @@ impl InternodeService {
             }
         });
         
-        // join the network
-        for seed in &seeds {
-            let addr:SocketAddr = seed.parse().unwrap();
-            match TcpStream::connect(addr){
-                Ok(ref mut stream) => {
-                    
-                    fn write_ignore(stream:&mut TcpStream, data:&str){
-                        let _ = stream.write(data.as_bytes());
-                        let _ = stream.flush();
-                        let mut buff = vec![0u8; 100];
-                        stream.read(&mut buff);
-                        debug!("buff: {}", String::from_utf8(buff).unwrap());
-                    }
-                    
-                    //let data = format!("v1|join|{}", my_node_address);
-                    write_ignore(stream, &*format!("v1|join|{}", my_node_address));
-                    write_ignore(stream, "v1|copy-rt");
-                    
-                    trace!("join network done.");
-                },
-                Err(_) => {
+        
+
+    }
+    
+    fn send_cmd_and_handle(&mut self, stream:&mut TcpStream, data:&str){
+        let _ = stream.write(data.as_bytes());
+        let _ = stream.flush();
+        let mut buff = vec![0u8; 100];
+        let resp:&str = match stream.read(&mut buff){
+            Ok(count) => {
+                str::from_utf8(&buff[0..count]).unwrap()
+            },
+            Err(_) => ""
+        };
+        
+        debug!("buff: {}", resp);
+        
+        let s:Vec<&str> = resp.split("|").collect();
+        
+        if s.len() < 2 {
+            return;
+        }
+        
+        match &s[1] {
+            &"rt" => {
+                let s:Vec<&str> = s[2].split(",").collect();
+                let guid:u32 = s[0].parse().unwrap();
+                let ip_addr = s[1].to_string();
+                let port:u16 = s[2].parse().unwrap();
+                if guid != self.my_guid {
+                    self.routing_tables.push(RoutingTable::new(guid, ip_addr, port));
                 }
+            },
+            x => {
+                warn!("unknown cmd: {}", x)
             }
         }
-
+        
     }
     
     fn setup_network_keeper(arc_self: &Arc<Mutex<&'static mut InternodeService>>){
@@ -196,46 +237,48 @@ impl InternodeService {
                 
                 debug!("checking network health...");
                 
-                let mut to_remove:Vec<u32> = Vec::new();
-                
-                
-                let mut _self = z.lock().unwrap();
-                for rt in &_self.routing_tables {
-                    debug!("   -> {}:{}", rt.ip_address, rt.port);
+                {
+                    let mut to_remove:Vec<u32> = Vec::new();
 
-                    let addr:SocketAddr = format!("{}:{}", rt.ip_address, rt.port).parse().unwrap();
-                    match TcpStream::connect(addr){
-                        Ok(ref mut stream) => {
-                            let _ = stream.write(b"ping");
-                            let mut buff = vec![0u8; 100];
-                            match stream.read(&mut buff) {
-                                Ok(count) if count > 0 => {
-                                    let data = String::from_utf8(buff).ok().unwrap();
-                                    debug!("got {}", data);
-                                },
-                                _ => to_remove.push(rt.guid)
+
+                    let mut _self = z.lock().unwrap();
+                    for rt in &_self.routing_tables {
+                        debug!("   -> {}:{}", rt.ip_address, rt.port);
+
+                        let addr:SocketAddr = format!("{}:{}", rt.ip_address, rt.port).parse().unwrap();
+                        match TcpStream::connect(addr){
+                            Ok(ref mut stream) => {
+                                let _ = stream.write(b"ping");
+                                let mut buff = vec![0u8; 100];
+                                match stream.read(&mut buff) {
+                                    Ok(count) if count > 0 => {
+                                        let data = String::from_utf8(buff).ok().unwrap();
+                                        debug!("got {}", data);
+                                    },
+                                    _ => to_remove.push(rt.guid)
+                                }
+                            },
+                            Err(e) => {
+                                // remove from routing tables
+                                debug!("{} not reached: {}, removed from routing tables.", addr, e);
+                                to_remove.push(rt.guid);
                             }
-                        },
-                        Err(e) => {
-                            // remove from routing tables
-                            debug!("{} not reached: {}, removed from routing tables.", addr, e);
-                            to_remove.push(rt.guid);
                         }
+
                     }
 
-                }
-            
-            
-                //let mut _self = z.lock().unwrap();
-                for guid in to_remove {
-                    let idx = _self.node_index(guid) as usize;
-                    &_self.routing_tables.swap_remove(idx);
+
+                    //let mut _self = z.lock().unwrap();
+                    for guid in to_remove {
+                        let idx = _self.node_index(guid) as usize;
+                        &_self.routing_tables.swap_remove(idx);
+                    }
                 }
             
                 
                 debug!("health checking done.");
                 
-                thread::sleep_ms(5000);
+                thread::sleep_ms(15000);
             }
         });
     }
