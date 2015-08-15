@@ -41,6 +41,7 @@ mod dbiface;
 mod dbclient;
 
 use dbiface::DbIface;
+use internode::MeState;
 
 
 docopt!(Args derive Debug, "
@@ -137,7 +138,7 @@ fn main() {
 
 
 
-fn serve(host_n_port:&String, rx:Receiver<u32>){
+fn serve(host_n_port:&String, rx:Receiver<MeState>){
     
     let db_iface = Arc::new(Mutex::new(DbIface::new()));
     
@@ -150,14 +151,17 @@ fn serve(host_n_port:&String, rx:Receiver<u32>){
             // let mut dbi = _db_iface.lock().unwrap();
             
             match rx.recv(){
-                Ok(count) => {
+                Ok(me_state) => {
                     let mut dbi = _db_iface.lock().unwrap();
                     
-                    dbi.set_rts_count(count as usize);
+                    let mut c = dbi.me_state.borrow_mut();
+                    *c = Some(me_state);
+                    
+                    //dbi.set_rts_count(me_state.rts_count);
                     
                     //let mut rts_count = _rts_count.lock().unwrap();
                     //*rts_count = count;
-                    debug!("rts_count updated via rx: {}", count);
+                    debug!("rts_count updated via rx: {}", c.as_ref().unwrap().rts_count);
                 },
                 _ => ()
             };

@@ -21,6 +21,20 @@ struct RoutingTable {
 //    socket_address: String
 }
 
+pub struct MeState {
+    pub my_guid: u32,
+    pub rts_count: usize
+}
+
+impl MeState {
+    pub fn new(my_guid:u32, rts_count: usize) -> MeState {
+        MeState {
+            my_guid: my_guid,
+            rts_count: rts_count
+        }
+    }
+}
+
 impl RoutingTable {
     pub fn new(guid: u32, ip_address: String, port: u16) -> RoutingTable {
         RoutingTable {
@@ -59,7 +73,7 @@ impl InternodeService {
 
     pub fn setup_internode_communicator(&mut self, 
             node_address: &String, seeds:Vec<String>, 
-            tx:Sender<u32>){
+            tx:Sender<MeState>){
         
         let node_address = node_address.clone();
         self.my_node_address = node_address.clone();
@@ -271,7 +285,7 @@ impl InternodeService {
         
     }
     
-    fn setup_network_keeper(&mut self, tx:Sender<u32>){ //(arc_self: &Arc<Mutex<&'static mut InternodeService>>){
+    fn setup_network_keeper(&mut self, tx:Sender<MeState>){ //(arc_self: &Arc<Mutex<&'static mut InternodeService>>){
         //let static_self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
         //let arc_self = Arc::new(Mutex::new(static_self));
         
@@ -344,7 +358,7 @@ impl InternodeService {
                     if count > 0 {
                         debug!("rts count now: {}", routing_tables.len());
                     }
-                    tx.send(routing_tables.len() as u32);
+                    tx.send(MeState::new(my_guid, routing_tables.len()));
                 }
             
                 
