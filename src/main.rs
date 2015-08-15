@@ -21,6 +21,8 @@ use std::net::TcpListener;
 use std::thread;
 use std::io::prelude::*;
 use std::fs::File;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, Sender};
 
 use docopt::Docopt;
 
@@ -121,21 +123,23 @@ fn main() {
         }
     }
 
+    let (tx, rx) = channel();
     if node_address.len() > 0 {
         let mut inode = internode::InternodeService::new();
-        inode.setup_internode_communicator(&node_address, seeds);
+        inode.setup_internode_communicator(&node_address, seeds, tx);
     }
 
     if args.cmd_serve {
-        serve(&host_n_port);
+        serve(&host_n_port, rx);
     }
 }
 
 
 
-fn serve(host_n_port:&String){
+
+fn serve(host_n_port:&String, rx:Receiver<u32>){
     
-    let db_iface = Arc::new(Mutex::new(DbIface::new()));
+    let db_iface = Arc::new(Mutex::new(DbIface::new(rx)));
     
     let listener = TcpListener::bind(&**host_n_port).unwrap();
     println!("client comm listening at {} ...", host_n_port);

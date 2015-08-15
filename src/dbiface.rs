@@ -2,15 +2,23 @@ use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 use db::Db;
 use time;
+use std::sync::mpsc::Receiver;
+use crc32::Crc32;
 
 pub struct DbIface {
-    db: Db
+    db: Db,
+    rx: Receiver<u32>,
+    rts_count: usize,
+    crc32: Crc32
 }
 
 impl DbIface {
-    pub fn new() -> DbIface {
+    pub fn new(rx:Receiver<u32>) -> DbIface {
         DbIface {
-            db: Db::new()
+            db: Db::new(),
+            rx: rx,
+            rts_count: 0,
+            crc32: Crc32::new()
         }
     }
     
@@ -24,6 +32,18 @@ impl DbIface {
         if s.len() == 1 && s[0] == "" {
             return Ok(0);
         }
+        
+        let rts_count = match self.rx.try_recv(){
+            Ok(count) => {
+                self.rts_count = count as usize;
+                self.rts_count
+            },
+            _ => {
+                self.rts_count
+            }
+        };
+        
+        trace!("rts_count: {}", rts_count);
 
         match &s[0] {
             &"set" => {
@@ -47,6 +67,17 @@ impl DbIface {
                         let ts = now.to_timespec().sec;
                         let data = format!("{}:{}:{}:{}|{}", length, metadata, expiration, ts, data_str);
                         debug!("data to store: k: {}, v: {:?}", k, data);
+                        
+                        // calculate route
+                        let target_node_id = if rts_count > 0 {
+                            (self.crc32.crc(k.as_bytes()) as usize) % (rts_count + 1)
+                        }else{
+                            0
+                        };
+                        
+                        debug!("key {} target_node_id: {}", k, target_node_id);
+                        
+                        
                         self.db.insert(k.as_bytes(), data.as_bytes());
                         let _ = stream.write(b"STORED\n");
                     },

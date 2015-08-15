@@ -7,7 +7,7 @@ use std::io::prelude::*;
 //use std::error;
 use std::str;
 use std::sync::{Arc, Mutex};
-
+use std::sync::mpsc::{Receiver, Sender};
 
 use encd;
 use encd::MessageEncoderDecoder;
@@ -57,7 +57,9 @@ impl InternodeService {
         }
     }
 
-    pub fn setup_internode_communicator(&mut self, node_address: &String, seeds:Vec<String>){
+    pub fn setup_internode_communicator(&mut self, 
+            node_address: &String, seeds:Vec<String>, 
+            tx:Sender<u32>){
         
         let node_address = node_address.clone();
         self.my_node_address = node_address.clone();
@@ -83,7 +85,7 @@ impl InternodeService {
         
         //let my_node_address = node_address.clone();
         //{
-            self.setup_network_keeper();
+            self.setup_network_keeper(tx);
         //}
 
         //let static_self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
@@ -269,7 +271,7 @@ impl InternodeService {
         
     }
     
-    fn setup_network_keeper(&mut self){ //(arc_self: &Arc<Mutex<&'static mut InternodeService>>){
+    fn setup_network_keeper(&mut self, tx:Sender<u32>){ //(arc_self: &Arc<Mutex<&'static mut InternodeService>>){
         //let static_self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
         //let arc_self = Arc::new(Mutex::new(static_self));
         
@@ -328,14 +330,13 @@ impl InternodeService {
                         
                         let idx = {
                             let mut it = routing_tables.iter();
-                            let idx = match it.position(|p| p.guid == guid){
+                            match it.position(|p| p.guid == guid){
                                 Some(i) => i as i32,
                                 None => -1
-                            };
-                            idx
+                            }
                         };
                         
-                        if idx > 0 {
+                        if idx > -1 {
                             routing_tables.swap_remove(idx as usize);
                             count = count + 1;
                         }
@@ -343,6 +344,7 @@ impl InternodeService {
                     if count > 0 {
                         debug!("rts count now: {}", routing_tables.len());
                     }
+                    tx.send(routing_tables.len() as u32);
                 }
             
                 

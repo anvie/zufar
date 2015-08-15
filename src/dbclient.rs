@@ -103,6 +103,16 @@ impl DbClient {
     }
 }
 
+use std::net::Shutdown;
+
+impl Drop for DbClient {
+    fn drop(&mut self){
+        debug!("db client shutdown.");
+        self.stream.borrow_mut().as_ref()
+            .map(|s| s.shutdown(Shutdown::Both));
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
