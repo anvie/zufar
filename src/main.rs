@@ -5,6 +5,7 @@
 #![feature(duration)]
 #![feature(socket_timeout)]
 #![allow(dead_code)]
+#![feature(path_ext)]
 
 extern crate rustc_serialize;
 extern crate docopt;

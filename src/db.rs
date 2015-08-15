@@ -1,23 +1,51 @@
 extern crate test;
 
+
 use std::collections::BTreeMap;
+
+use std::io::prelude::*;
+use std::io::BufWriter;
+use std::fs::File;
+use std::path::Path;
+use std::fs::OpenOptions;
+
 use crc32::Crc32;
 
 
 pub struct Db {
-    memtable: BTreeMap<u32, Vec<u8>>
+    memtable: BTreeMap<u32, Vec<u8>>,
+    fstore: File
 }
 
 impl Db {
     pub fn new() -> Db {
+        // let path = Path::new("commitlog.txt");
+        // 
+        // let file = if path.exists(){
+        //     File::open(path).unwrap()
+        // }else{
+        //     File::create(path).unwrap()
+        // };
+        
+        let mut file = match OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .append(true)
+                    .open("commitlog.txt"){
+                        Ok(mut f) => f,
+                        Err(e) => panic!("cannot open commitlog.txt. {}", e)
+                    };
+        
         Db {
-            memtable: BTreeMap::new()
+            memtable: BTreeMap::new(),
+            fstore: file
         }
     }
     
     pub fn insert(&mut self, k:&[u8], v:&[u8]){
         let mut crc32 = Crc32::new();
         self.memtable.insert(crc32.crc(k), v.to_vec());
+        self.flush();
     }
     
     pub fn get(&mut self, k:&[u8]) -> Option<&[u8]> {
@@ -25,11 +53,18 @@ impl Db {
         self.memtable.get(&crc32.crc(k)).map(|d| d.as_ref())
     }
     
-    pub fn flush(&self){
+    pub fn flush(&mut self){
         let iter = self.memtable.iter();
         for (k, v) in iter {
-            //println!("flushing k: {:?}, v: {:?}", k, v);
+            
+            println!("flushing k: {:?}, v: {:?}", k, v);
+            
+            //let mut writer = BufWriter::new(&self.fstore);
+            
+            self.fstore.write_all(format!("{}:{}\n", k, String::from_utf8(v.clone()).unwrap()).as_bytes());
         }
+        self.fstore.flush();
+        self.fstore.sync_all();
     }
 }
 
