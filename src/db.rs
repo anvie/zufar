@@ -21,11 +21,11 @@ pub struct Db {
 impl Db {
     pub fn new() -> Db {
         
-        let file_name = "commitlog.txt";
+        let file_name = Box::new("commitlog.txt");
+        let path = Path::new(*file_name);
         
         let mut _memtable = BTreeMap::new();
         {
-            let path = Path::new(file_name);
 
             if path.exists(){
                 // load data into memtable
@@ -50,7 +50,7 @@ impl Db {
                     .write(true)
                     .create(true)
                     .append(true)
-                    .open(file_name){
+                    .open(path){
                         Ok(mut f) => f,
                         Err(e) => panic!("cannot open commitlog.txt. {}", e)
                     };
