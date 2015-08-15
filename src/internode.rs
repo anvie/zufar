@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 
 
 use encd;
-
 use encd::MessageEncoderDecoder;
+use node::Node;
 
 #[derive(Debug)]
 struct RoutingTable {
@@ -38,8 +38,9 @@ impl RoutingTable {
 
 pub struct InternodeService {
     my_guid: u32,
+    my_node_address: String,
     the_encd: encd::PlainTextEncoderDecoder,
-    routing_tables: Vec<RoutingTable>
+    routing_tables: Vec<RoutingTable>,
 }
 
 type ZResult = Result<i32, &'static str>;
@@ -50,6 +51,7 @@ impl InternodeService {
     pub fn new() -> InternodeService {
         InternodeService {
             my_guid: 0,
+            my_node_address: "unset".to_string(),
             the_encd: encd::PlainTextEncoderDecoder::new(),
             routing_tables: Vec::new()
         }
@@ -58,7 +60,7 @@ impl InternodeService {
     pub fn setup_internode_communicator(&mut self, node_address: &String, seeds:Vec<String>){
         
         let node_address = node_address.clone();
-        //self.my_node_address = node_address.clone();
+        self.my_node_address = node_address.clone();
     
         //let _self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
 
@@ -88,7 +90,7 @@ impl InternodeService {
             let arc_self = Arc::new(Mutex::new(static_self));
             InternodeService::setup_network_keeper(&arc_self);
             
-            
+            //let tcp_node_address:SocketAddr = (&node_address).parse().unwrap();
             let listener = TcpListener::bind(&*node_address).unwrap();
             println!("internode comm listening at {} ...", node_address);
             for stream in listener.incoming() {
@@ -98,12 +100,12 @@ impl InternodeService {
 
                     let mut stream = stream.unwrap();
 
-                    {
+                    //{
                         //let z = z.lock().unwrap();
 
                         //let data = z.the_encd.encode(&"INTERNODE: Hello World\r\n".to_string()).ok().unwrap();
                         //stream.write(&*data).unwrap();
-                    }
+                    //}
 
 
                     'the_loop: loop {
@@ -228,11 +230,19 @@ impl InternodeService {
                 for s in ss {
                     let s:Vec<&str> = s.split(",").collect();
                     let guid:u32 = s[0].parse().unwrap();
+                    if self.is_node_registered(guid){
+                        continue;
+                    }
                     let ip_addr = s[1].to_string();
                     let port:u16 = s[2].parse().unwrap();
                     if guid != self.my_guid {
                         info!("added {}:{} to the rts with guid {}", ip_addr, port, guid);
-                        self.routing_tables.push(RoutingTable::new(guid, ip_addr, port));
+                        
+                        self.routing_tables.push(RoutingTable::new(guid, ip_addr.clone(), port));
+                        
+                        // request to add me 
+                        let mut node = Node::new(guid, &format!("{}:{}", ip_addr, port));
+                        node.add_to_rts(Node::new(self.my_guid, &self.my_node_address));
                     }
                 }
                 debug!("rts count now: {}", self.routing_tables.len());
@@ -411,6 +421,36 @@ impl InternodeService {
                 }else{
                     Err("not registered as node")
                 }
+            },
+            "add-me" => {
+                
+                //let x:Vec<&str> = params[2].split(":").collect();
+                let params = &params[2..];
+                
+                let guid:u32 = params[0].parse().unwrap();
+                
+                // check is already exists?
+                if !self.is_node_registered(guid){
+                    
+                    let s:Vec<&str> = params[1].split(":").collect();
+                    
+                    if s.len() == 2 {
+                        let ip_addr = s[0];
+                        let port:u16 = s[1].parse().unwrap();
+
+                        self.routing_tables.push(RoutingTable::new(guid, ip_addr.to_string(), port));
+                        
+                        info!("node {}:{} added into rts by request", ip_addr, port);
+                        info!("rts count now: {}", self.routing_tables.len());
+                    }
+                    
+                }
+                
+                let data = format!("v1|rv|200");
+                self.write(stream, &data);
+                
+                Ok(1)
+                
             },
             x => {
                 debug!("unknwon cmd: {}", x);
