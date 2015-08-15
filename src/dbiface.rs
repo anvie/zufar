@@ -1,6 +1,7 @@
 use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 use db::Db;
+use time;
 
 pub struct DbIface {
     db: Db
@@ -42,7 +43,9 @@ impl DbIface {
                 match stream.read(&mut buff){
                     Ok(count) if count > 0 => {
                         let data_str = String::from_utf8(buff[0..count].to_vec()).unwrap();
-                        let data = format!("{}:{}:{}|{}", length, metadata, expiration, data_str);
+                        let now = time::now();
+                        let ts = now.to_timespec().sec;
+                        let data = format!("{}:{}:{}:{}|{}", length, metadata, expiration, ts, data_str);
                         debug!("data to store: k: {}, v: {:?}", k, data);
                         self.db.insert(k.as_bytes(), data.as_bytes());
                         let _ = stream.write(b"STORED\n");

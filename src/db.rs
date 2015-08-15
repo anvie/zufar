@@ -19,14 +19,7 @@ pub struct Db {
 
 impl Db {
     pub fn new() -> Db {
-        // let path = Path::new("commitlog.txt");
-        // 
-        // let file = if path.exists(){
-        //     File::open(path).unwrap()
-        // }else{
-        //     File::create(path).unwrap()
-        // };
-        
+
         let mut file = match OpenOptions::new()
                     .write(true)
                     .create(true)

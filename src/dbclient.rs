@@ -33,38 +33,13 @@ impl DbClient {
                 let _ = stream.set_read_timeout(Some(Duration::new(5, 0)));
                 
                 // clean up welcome message
-                // {
-                //     let mut buff = String::new();
-                //     //let mut reader = BufReader::new(&stream);
-                // 
-                //     //reader.read_until(0x00,&mut buff);
-                //     stream.read_to_string(&mut buff);
-                //     //println!("got: {}", String::from_utf8(buff).unwrap());
-                //     
-                //     println!("got: {}", buff);
-                //     
-                // }
-                
-                {
-                    // let mut buff = vec![0u8; 100];
-                    // match stream.read(&mut buff){
-                    //     Ok(count) => {
-                    //         println!("welcome msg: {}", String::from_utf8(buff[0..count].to_vec()).unwrap());
-                    //     },
-                    //     Err(e) => println!("error while getting welcome msg, err: {}", e)
-                    // }
-                    let _ = stream.read(&mut [0u8; 128]);
-                }
+
+                let _ = stream.read(&mut [0u8; 128]);
                 
                 let mut s = self.stream.borrow_mut();
                 
                 *s = Some(stream);
-                
-
-                
-                
-                //self.send_cmd_and_handle(stream, &*format!("v1|add-me|{}|{}", node.guid, node.address));
-                
+             
                 Ok(0)
             },
             Err(e) => {
