@@ -1,6 +1,7 @@
 #![feature(plugin)]
 #![plugin(docopt_macros)]
 #![feature(ip_addr)]
+#![feature(test)]
 
 extern crate rustc_serialize;
 extern crate docopt;
@@ -9,6 +10,7 @@ extern crate msgpack;
 extern crate byteorder;
 #[macro_use] extern crate log;
 extern crate env_logger;
+extern crate rand;
 
 use std::net::TcpListener;
 use std::thread;
