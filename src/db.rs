@@ -31,7 +31,6 @@ impl Db {
                 // load data into memtable
                 info!("loading commitlog data into memtable...");
                 let mut file = BufReader::new(File::open(&path).unwrap());
-                let mut count = 0;
                 for line in file.lines().filter_map(|result| result.ok()) {
                     //println!("line: {}", line);
                     let s:Vec<&str> = line.split("|").collect();
@@ -40,9 +39,8 @@ impl Db {
                     let content = s[2..].join("|");
                     debug!("  (v{}) -> k: {}, content: {}", version, hash_key, content);
                     _memtable.insert(hash_key, content.into_bytes());
-                    count = count + 1;
                 }
-                info!("loading commitlog done. {} record(s) added.", count);
+                info!("loading commitlog done. {} record(s) added.", _memtable.len());
             }
         }
 

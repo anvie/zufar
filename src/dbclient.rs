@@ -58,14 +58,6 @@ impl DbClient {
             let _ = stream.write(data.as_bytes());
             let _ = stream.flush();
             
-            // let mut buff = vec![0u8; 512];
-            // match stream.read(&mut buff){
-            //     Ok(count) => {
-            //         println!("DbClient.set() buff: {:?}", buff);
-            //     },
-            //     Err(e) => println!("DbClient.set() err: {}", e)
-            // }
-            
             let _ = stream.read(&mut [0u8; 512]);
             
             let _ = stream.write(v.as_bytes());

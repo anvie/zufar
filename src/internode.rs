@@ -110,14 +110,6 @@ impl InternodeService {
 
                     let mut stream = stream.unwrap();
 
-                    //{
-                        //let z = z.lock().unwrap();
-
-                        //let data = z.the_encd.encode(&"INTERNODE: Hello World\r\n".to_string()).ok().unwrap();
-                        //stream.write(&*data).unwrap();
-                    //}
-
-
                     'the_loop: loop {
                         
                         let mut routing_tables = routing_tables.lock().unwrap();
