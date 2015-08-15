@@ -4,25 +4,36 @@ use db::Db;
 use time;
 use std::sync::mpsc::Receiver;
 use crc32::Crc32;
+use std::thread;
+use std::sync::{Arc, Mutex};
+
 
 pub struct DbIface {
     db: Db,
-    rx: Receiver<u32>,
-    rts_count: usize,
+    //rx: Receiver<u32>,
+    // rts_count: usize,
     crc32: Crc32
 }
 
 impl DbIface {
-    pub fn new(rx:Receiver<u32>) -> DbIface {
+    pub fn new() -> DbIface {        
         DbIface {
             db: Db::new(),
-            rx: rx,
-            rts_count: 0,
+            //rx: rx,
+            // rts_count: 0,
             crc32: Crc32::new()
         }
     }
     
-    pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8]) -> Result<u16, &'static str> {
+    // pub fn set_rts_count(&mut self, count: usize){
+    //     self.rts_count = count;
+    // }
+    // 
+    // pub fn rts_count(&self) -> usize {
+    //     self.rts_count
+    // }
+    
+    pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8], rts_count:usize) -> Result<u16, &'static str> {
 
         let d = String::from_utf8(data.to_vec()).ok().unwrap();
         let s:Vec<&str> = d.trim().split(" ").collect();
@@ -32,16 +43,6 @@ impl DbIface {
         if s.len() == 1 && s[0] == "" {
             return Ok(0);
         }
-        
-        let rts_count = match self.rx.try_recv(){
-            Ok(count) => {
-                self.rts_count = count as usize;
-                self.rts_count
-            },
-            _ => {
-                self.rts_count
-            }
-        };
         
         trace!("rts_count: {}", rts_count);
 
