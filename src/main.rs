@@ -141,18 +141,22 @@ fn serve(host_n_port:&String, rx:Receiver<u32>){
     
     let db_iface = Arc::new(Mutex::new(DbIface::new()));
     
-    //let _db_iface = db_iface.clone();
-    let mut rts_count = Arc::new(Mutex::new(0));
-    let mut _rts_count = rts_count.clone();
+    let _db_iface = db_iface.clone();
+    //let mut rts_count = Arc::new(Mutex::new(0));
+    //let mut _rts_count = rts_count.clone();
     
     thread::spawn(move || {
         loop {
-            //let mut dbi = _db_iface.lock().unwrap();
+            // let mut dbi = _db_iface.lock().unwrap();
             
             match rx.recv(){
                 Ok(count) => {
-                    let mut rts_count = _rts_count.lock().unwrap();
-                    *rts_count = count;
+                    let mut dbi = _db_iface.lock().unwrap();
+                    
+                    dbi.set_rts_count(count as usize);
+                    
+                    //let mut rts_count = _rts_count.lock().unwrap();
+                    //*rts_count = count;
                     debug!("rts_count updated via rx: {}", count);
                 },
                 _ => ()
@@ -166,7 +170,7 @@ fn serve(host_n_port:&String, rx:Receiver<u32>){
     println!("client comm listening at {} ...", host_n_port);
     for stream in listener.incoming() {
         let db_iface = db_iface.clone();
-        let rts_count = rts_count.clone();
+        //let rts_count = rts_count.clone();
         thread::spawn(move || {
             let mut stream = stream.unwrap();
             stream.write(b"Welcome to Zufar\r\n").unwrap();
@@ -177,8 +181,8 @@ fn serve(host_n_port:&String, rx:Receiver<u32>){
                     Ok(count) if count > 0 => {
                         let data = &buff[0..count];
                         let mut db_iface = db_iface.lock().unwrap();
-                        let rts_count = rts_count.lock().unwrap();
-                        match db_iface.handle_packet(&mut stream, data, *rts_count as usize){
+                        // let rts_count = rts_count.lock().unwrap();
+                        match db_iface.handle_packet(&mut stream, data){
                             Ok(i) if i > 0 =>
                                 break 'the_loop
                             ,
