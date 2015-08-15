@@ -14,10 +14,6 @@ impl Db {
             memtable: BTreeMap::new()
         }
     }
-    // 
-    // pub fn insert(&mut self, k:u32, v:&[u8]){
-    //     self.memtable.insert(k, v.to_vec());
-    // }
     
     pub fn insert(&mut self, k:&[u8], v:&[u8]){
         let mut crc32 = Crc32::new();
@@ -32,7 +28,7 @@ impl Db {
     pub fn flush(&self){
         let iter = self.memtable.iter();
         for (k, v) in iter {
-            println!("flushing k: {:?}, v: {:?}", k, v);
+            //println!("flushing k: {:?}, v: {:?}", k, v);
         }
     }
 }
@@ -41,7 +37,7 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use super::Db;
-    use crc32::Crc32;
+    //use crc32::Crc32;
     use super::test::Bencher;
     use rand::random;
     

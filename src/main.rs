@@ -2,6 +2,9 @@
 #![plugin(docopt_macros)]
 #![feature(ip_addr)]
 #![feature(test)]
+#![feature(duration)]
+#![feature(socket_timeout)]
+#![allow(dead_code)]
 
 extern crate rustc_serialize;
 extern crate docopt;
@@ -31,6 +34,7 @@ mod node;
 mod crc32;
 mod db;
 mod dbiface;
+mod dbclient;
 
 use dbiface::DbIface;
 
