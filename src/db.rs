@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use crc32::Crc32;
 
 
-struct Db {
+pub struct Db {
     memtable: BTreeMap<u32, Vec<u8>>
 }
 
@@ -36,6 +36,7 @@ impl Db {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

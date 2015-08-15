@@ -21,14 +21,18 @@ use docopt::Docopt;
 
 use toml::Value;
 
+use std::net::{TcpStream, SocketAddr};
+use std::sync::{Arc, Mutex};
+
 #[macro_use] mod util;
 mod encd;
 mod internode;
 mod node;
 mod crc32;
 mod db;
+mod dbiface;
 
-
+use dbiface::DbIface;
 
 
 docopt!(Args derive Debug, "
@@ -121,13 +125,42 @@ fn main() {
     }
 }
 
+
+
 fn serve(host_n_port:&String){
+    
+    let db_iface = Arc::new(Mutex::new(DbIface::new()));
+    
     let listener = TcpListener::bind(&**host_n_port).unwrap();
     println!("client comm listening at {} ...", host_n_port);
     for stream in listener.incoming() {
+        let db_iface = db_iface.clone();
         thread::spawn(move || {
             let mut stream = stream.unwrap();
-            stream.write(b"Hello World\r\n").unwrap();
+            stream.write(b"Welcome to Zufar\r\n").unwrap();
+            
+            'the_loop: loop {
+                let mut buff = vec![0u8; 100];
+                match stream.read(&mut buff){
+                    Ok(count) if count > 0 => {
+                        let data = &buff[0..count];
+                        let mut db_iface = db_iface.lock().unwrap();
+                        match db_iface.handle_packet(&mut stream, data){
+                            Ok(i) if i > 0 =>
+                                break 'the_loop
+                            ,
+                            _ => ()
+                        }
+                    },
+                    _ => ()
+                }
+            }
+            
         });
     }
 }
+
+
+
+
+
