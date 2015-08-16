@@ -188,7 +188,7 @@ impl ApiService {
 
                 Ok(0)
             },
-            &"getwd" => {
+            &"getd" => {
                 let k = s[1];
 
                 let ts = time::now().to_timespec().nsec;
