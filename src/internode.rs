@@ -258,6 +258,7 @@ impl InternodeService {
                 info!("added {} to the rts with guid {}", connected_seed_addr, seed_guid);
                 {
                     let mut info = self.info.lock().unwrap();
+                    info.my_guid = self.my_guid;
                     let my_api_address = info.my_api_address.clone();
                     let mut rts = &mut info.routing_tables;
                     rts.push(RoutingTable::new(seed_guid, connected_seed_addr, my_api_address));

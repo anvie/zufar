@@ -42,7 +42,7 @@ mod api;
 mod dbclient;
 
 use api::ApiService;
-use internode::MeState;
+//use internode::MeState;
 use internode::InternodeService;
 //use cluster;
 
