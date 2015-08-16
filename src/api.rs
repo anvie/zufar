@@ -182,6 +182,11 @@ impl ApiService {
                 Ok(0)
             },
             &"get" => {
+                
+                if s.len() != 2 {
+                    return Err("bad parameter length");
+                }
+                
                 let k = s[1];
                 
                 self.op_get(k, stream, my_guid, rts_count);
@@ -189,7 +194,14 @@ impl ApiService {
                 Ok(0)
             },
             &"getd" => {
+                
+                if s.len() != 2 {
+                    return Err("bad parameter length");
+                }
+                
                 let k = s[1];
+                
+                
 
                 let ts = time::now().to_timespec().nsec;
                 self.op_get(k, stream, my_guid, rts_count);
@@ -200,8 +212,82 @@ impl ApiService {
 
                 Ok(0)
             },
+            &"delete" | &"deleted" | &"del" | &"deld" => {
+                
+                if s.len() != 2 {
+                    return Err("bad parameter length");
+                }
+                
+                let key = s[1];
+
+                let trace = s[0] == "deleted" || s[0] == "deld";
+                
+                if trace {
+                    let ts = time::now().to_timespec().nsec;
+                    self.op_del(key, stream, my_guid, rts_count);
+                    let ts = (time::now().to_timespec().nsec - ts) as f32 / 1_000_000f32;
+
+                    stream.write(format!("in {}ms\r\n", (ts as f32 * 0.100f32)).as_bytes());
+                    info!("delete record done in {}ms", ts);
+                }else{
+                    self.op_del(key, stream, my_guid, rts_count);
+                }
+                
+                
+                Ok(0)
+            }
             _ => Ok(1)
         }
+    }
+    
+    fn op_del(&mut self, key:&str, stream:&mut TcpStream, my_guid:u32, rts_count:usize){
+        // calculate route
+        let target_node_id = self.calculate_route(key, rts_count);        
+        
+        debug!("key {} target_node_id: {}", key, target_node_id);
+        
+        if target_node_id == my_guid {
+            trace!("del from myself");
+            
+            if self.db.del(key.as_bytes()) > 0 {
+                let _ = stream.write(b"DELETED\r\n");
+            }else{
+                let _ = stream.write(b"NOT_FOUND\r\n");
+            }
+            
+        }else{
+            trace!("del in other node with guid {}", target_node_id);
+            
+            match self.get_rt_by_guid(target_node_id){
+                Some(rt) => {
+                    
+                    trace!("trying to delete data from: {:?}", rt);
+                    
+                    let mut dbc = DbClient::new(&rt.api_address());
+                    match dbc.connect(){
+                        Err(_) => panic!("cannot contact node-{}", target_node_id),
+                        _ => (),
+                    }
+                    match dbc.del(key){
+                        Ok(result) => {
+                            let _ = stream.write(result.as_bytes());
+                            let _ = stream.flush();
+                        },
+                        Err(e) => {
+                            warn!("cannot delete data from node-{}. {}", target_node_id, e);
+                            let _ = stream.write(b"ERROR\r\n");
+                        }
+                    }
+                },
+                None => {
+                    let err_str = format!("cannot contact node-{}", target_node_id);
+                    error!("{}", err_str);
+                    //let _ = stream.write(END);
+                    let _ = stream.write(format!("SERVER_ERROR {}\r\n", err_str).as_bytes());
+                }
+            }
+        }
+        
     }
     
     fn op_get(&mut self, key:&str, stream:&mut TcpStream, my_guid:u32, rts_count:usize){
@@ -225,15 +311,19 @@ impl ApiService {
                     let content = s[1];
 
                     let data = format!("VALUE {} {} {}\n{}\nEND\n", key, metadata, length, content);
+                    
+                    trace!("data: {}", data);
+                    
                     let _ = stream.write(data.as_bytes());
                 },
                 _ => {
+                    trace!("get -> None");
                     let _ = stream.write(END);
                 }
             }
             
         }else{
-            trace!("get from other node-{}", source_node_id);
+            trace!("get from other node with guid {}", source_node_id);
             
             match self.get_rt_by_guid(source_node_id){
                 Some(rt) => {

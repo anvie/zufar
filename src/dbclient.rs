@@ -11,6 +11,8 @@ use std::cell::RefCell;
 //use std::io::BufReader;
 use std::error::Error;
 
+type DbcResult = Result<String,&'static str>;
+
 #[derive(Debug)]
 pub struct DbClient {
     address: String,
@@ -79,17 +81,17 @@ impl DbClient {
             match stream.read(&mut buff) {
                 Ok(count) if count > 0 => {
                     let content = String::from_utf8(buff[0..count].to_vec()).unwrap();
-                    if content.trim() != "END" {
+                    // if content.trim() != "END" {
                         Ok(content)
-                    }else{
-                        Err("???")
-                    }
+                    // }else{
+                    //     Ok("".to_string())
+                    // }
                 },
                 Err(e) => {
                     error!("cannot read from stream. {}", e.description());
                     Err("")
                 },
-                _ => Err("???")
+                _ => Ok("".to_string())
             }
             
         }else{
@@ -107,6 +109,23 @@ impl DbClient {
                 error!("error: {}", e);
                 None
             }
+        }
+    }
+    
+    pub fn del(&mut self, key:&str) -> DbcResult {
+        let stream = self.stream.borrow_mut();
+        let mut stream = stream.as_ref().unwrap();
+        let cmd = format!("del {}", key);
+        let _ = stream.write(cmd.as_bytes());
+        let mut buff = vec![0u8; 512];
+        match stream.read(&mut buff){
+            Ok(count) if count > 0 => {
+                let rv = String::from_utf8(buff[0..count].to_vec()).unwrap();
+                //if rv == "DELETED\r\n"
+                Ok(rv)
+            },
+            Ok(_) => Err("count is zero"),
+            Err(_) => Err("cannot read stream")
         }
     }
 }
@@ -138,8 +157,8 @@ mod tests {
         dbc.set("name", "Zufar");
         dbc.set("something", "In the way");
         dbc.set("article", "This is very long-long text we tried so far");
-        assert_eq!(dbc.get_raw("name"), Some("VALUE name 1 5\nZufar\nEND\n".to_string()));
-        assert_eq!(dbc.get_raw("no_name"), None);
+        assert_eq!(dbc.get_raw("name"), Ok("VALUE name 1 5\nZufar\nEND\n".to_string()));
+        assert_eq!(dbc.get_raw("no_name"), Err("???"));
         assert_eq!(dbc.get("name"), Some("Zufar".to_string()));
         assert_eq!(dbc.get("none"), None);
         assert_eq!(dbc.get("something"), Some("In the way".to_string()));

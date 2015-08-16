@@ -16,7 +16,8 @@ use crc32::Crc32;
 pub struct Db {
     memtable_eden: BTreeMap<u32, Vec<u8>>,
     memtable: BTreeMap<u32, Vec<u8>>,
-    fstore: File
+    fstore: File,
+    crc32: Crc32
 }
 
 impl Db {
@@ -32,7 +33,7 @@ impl Db {
                 // load data into memtable
                 info!("loading commitlog data into memtable...");
 
-                let ts = time::now().to_timespec().nsec;
+                let ts = time::now().to_timespec().sec;
                 
                 let mut file = BufReader::new(File::open(&path).unwrap());
                 for line in file.lines().filter_map(|result| result.ok()) {
@@ -44,9 +45,9 @@ impl Db {
                     _memtable.insert(hash_key, content.into_bytes());
                 }
                 
-                let ts = (time::now().to_timespec().nsec - ts) / 1_000_000;
+                let ts = (time::now().to_timespec().sec - ts);
                 
-                info!("loading commitlog done. {} record(s) added in {}ms", _memtable.len(), ts);
+                info!("loading commitlog done. {} record(s) added in {}s", _memtable.len(), ts);
             }
         }
 
@@ -62,25 +63,36 @@ impl Db {
         Db {
             memtable_eden: BTreeMap::new(),
             memtable: _memtable,
-            fstore: file
+            fstore: file,
+            crc32: Crc32::new()
         }
     }
     
     pub fn insert(&mut self, k:&[u8], v:&[u8]){
-        let mut crc32 = Crc32::new();
-        self.memtable_eden.insert(crc32.crc(k), v.to_vec());
-        self.flush();
+        //let mut crc32 = Crc32::new();
+        self.memtable_eden.insert(self.crc32.crc(k), v.to_vec());
+        //self.flush();
     }
     
     pub fn get(&mut self, k:&[u8]) -> Option<&[u8]> {
-        let mut crc32 = Crc32::new();
-        let rv = self.memtable.get(&crc32.crc(k)).map(|d| d.as_ref());
+        //let mut crc32 = Crc32::new();
+        let rv = self.memtable.get(&self.crc32.crc(k)).map(|d| d.as_ref());
         if rv.is_some(){
             rv
         }else{
             // try search in eden 
-            self.memtable_eden.get(&crc32.crc(k)).map(|d| d.as_ref())
+            self.memtable_eden.get(&self.crc32.crc(k)).map(|d| d.as_ref())
         }
+    }
+    
+    pub fn del(&mut self, key:&[u8]) -> usize {
+        let hash_key = self.crc32.crc(key);
+        if self.memtable_eden.remove(&hash_key).is_none(){
+           if self.memtable.remove(&hash_key).is_none(){
+               return 0;
+           }
+        }
+        return 1;
     }
     
     pub fn flush(&mut self){
@@ -92,7 +104,7 @@ impl Db {
 
             for (k, v) in iter {
 
-                println!("flushing k: {:?}, v: {:?}", k, v);
+                //println!("flushing k: {:?}, v: {:?}", k, v);
 
                 //let mut writer = BufWriter::new(&self.fstore);
 
@@ -158,6 +170,15 @@ mod tests {
         db.flush();
     }
     
+    #[test]
+    fn test_delete(){
+        let mut db = Db::new();
+        db.insert(b"name", b"Zufar");
+        assert_eq!(db.get(b"name"), Some(&b"Zufar"[..]));
+        db.del(b"name");
+        assert_eq!(db.get(b"name"), None);
+    }
+    
     fn rand_string(count:usize) -> String {
         (0..count).map(|_| (0x20u8 + (random::<f32>() * 96.0) as u8) as char).collect()
     }
@@ -183,5 +204,16 @@ mod tests {
             db.get(k.as_bytes());
         })
     }
+    
+    #[bench]
+    fn bench_delete(b: &mut Bencher){
+        let mut db = Db::new();
+        b.iter(|| {
+            let k = format!("k-{}", rand_string(10));
+            db.del(k.as_bytes());
+        })
+    }
+
+    
 }
 
