@@ -9,6 +9,7 @@ use std::io::prelude::*;
 //use std::str;
 use std::cell::RefCell;
 //use std::io::BufReader;
+use std::error::Error;
 
 #[derive(Debug)]
 pub struct DbClient {
@@ -66,7 +67,7 @@ impl DbClient {
         }
     }
     
-    pub fn get_raw(&mut self, key:&str) -> Option<String> {
+    pub fn get_raw(&mut self, key:&str) -> Result<String,&str> {
         let s = self.stream.borrow_mut();
         
         if s.is_some() {
@@ -79,26 +80,33 @@ impl DbClient {
                 Ok(count) if count > 0 => {
                     let content = String::from_utf8(buff[0..count].to_vec()).unwrap();
                     if content.trim() != "END" {
-                       Some(content)
+                        Ok(content)
                     }else{
-                        None
+                        Err("???")
                     }
                 },
-                _ => None
+                Err(e) => {
+                    error!("cannot read from stream. {}", e.description());
+                    Err("")
+                },
+                _ => Err("???")
             }
             
         }else{
-            None
+            Err("cannot get stream")
         }
     }
     
     pub fn get(&mut self, key:&str) -> Option<String> {
         match self.get_raw(key){
-            Some(d) => {
+            Ok(d) => {
                 let s:Vec<&str> = d.split("\n").collect();
                 Some(s[1].to_string())
             },
-            _ => None
+            Err(e) => {
+                error!("error: {}", e);
+                None
+            }
         }
     }
 }

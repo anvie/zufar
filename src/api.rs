@@ -216,15 +216,18 @@ impl ApiService {
                     
                     match self.get_rt_by_guid(source_node_id){
                         Some(rt) => {
+                            
+                            trace!("trying to get data from: {:?}", rt);
+                            
                             let mut dbc = DbClient::new(&rt.api_address());
                             dbc.connect();
                             match dbc.get_raw(k){
-                                Some(result) => {
+                                Ok(result) => {
                                     let _ = stream.write(result.as_bytes());
                                     let _ = stream.flush();
                                 },
-                                None => {
-                                    warn!("cannot get data from node-{}", source_node_id);
+                                Err(e) => {
+                                    warn!("cannot get data from node-{}. {}", source_node_id, e);
                                     let _ = stream.write(END);
                                 }
                             }

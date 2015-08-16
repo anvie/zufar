@@ -29,6 +29,7 @@ impl Node {
         match TcpStream::connect(addr){
             Ok(ref mut stream) => {
 
+                
                 self.send_cmd_and_handle(stream, &*format!("v1|add-me|{}|{}|{}", 
                     node.guid, node.node_address, node.api_address));
 

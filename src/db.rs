@@ -55,7 +55,7 @@ impl Db {
                     .create(true)
                     .append(true)
                     .open(path){
-                        Ok(mut f) => f,
+                        Ok(f) => f,
                         Err(e) => panic!("cannot open commitlog.txt. {}", e)
                     };
         
@@ -103,8 +103,8 @@ impl Db {
             }
         }
         
-        self.fstore.flush();
-        self.fstore.sync_all();
+        let _ = self.fstore.flush();
+        let _ = self.fstore.sync_all();
         
         // move flushed data
         let mut count = 0;
