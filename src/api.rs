@@ -184,69 +184,83 @@ impl ApiService {
             &"get" => {
                 let k = s[1];
                 
-                // calculate route
-                let source_node_id = self.calculate_route(k, rts_count);
-                
-                debug!("key {} source_node_id: {}", k, source_node_id);
-                
-                if source_node_id == my_guid {
-                    trace!("get from myself");
-                    
-                    match self.db.get(k.as_bytes()){
-                        Some(v) => {
+                self.op_get(k, stream, my_guid, rts_count);
 
-                            let s = String::from_utf8(v.to_vec()).unwrap();
-                            let s:Vec<&str> = s.split("|").collect();
-                            let meta_s:Vec<&str> = s[0].split(":").collect();
-                            let length = meta_s[0];
-                            let metadata = meta_s[1];
-                            //let expiration = meta_s[2];
-                            let content = s[1];
+                Ok(0)
+            },
+            &"getwd" => {
+                let k = s[1];
 
-                            let data = format!("VALUE {} {} {}\n{}\nEND\n", k, metadata, length, content);
-                            let _ = stream.write(data.as_bytes());
-                        },
-                        _ => {
-                            let _ = stream.write(END);
-                        }
-                    }
-                    
-                }else{
-                    trace!("get from other node-{}", source_node_id);
-                    
-                    match self.get_rt_by_guid(source_node_id){
-                        Some(rt) => {
-                            
-                            trace!("trying to get data from: {:?}", rt);
-                            
-                            let mut dbc = DbClient::new(&rt.api_address());
-                            dbc.connect();
-                            match dbc.get_raw(k){
-                                Ok(result) => {
-                                    let _ = stream.write(result.as_bytes());
-                                    let _ = stream.flush();
-                                },
-                                Err(e) => {
-                                    warn!("cannot get data from node-{}. {}", source_node_id, e);
-                                    let _ = stream.write(END);
-                                }
-                            }
-                        },
-                        None => {
-                            let err_str = format!("cannot contact node-{}", source_node_id);
-                            error!("{}", err_str);
-                            //let _ = stream.write(END);
-                            let _ = stream.write(format!("SERVER_ERROR {}\r\n", err_str).as_bytes());
-                        }
-                    }
-                    
-                }
-
+                let ts = time::now().to_timespec().nsec;
+                self.op_get(k, stream, my_guid, rts_count);
+                let ts = (time::now().to_timespec().nsec - ts) as f32 / 1_000_000f32;
                 
+                stream.write(format!("in {}ms\r\n", (ts as f32 * 0.100f32)).as_bytes());
+                info!("get record done in {}ms", ts);
 
                 Ok(0)
             },
             _ => Ok(1)
+        }
+    }
+    
+    fn op_get(&mut self, key:&str, stream:&mut TcpStream, my_guid:u32, rts_count:usize){
+        // calculate route
+        let source_node_id = self.calculate_route(key, rts_count);
+        
+        debug!("key {} source_node_id: {}", key, source_node_id);
+        
+        if source_node_id == my_guid {
+            trace!("get from myself");
+            
+            match self.db.get(key.as_bytes()){
+                Some(v) => {
+
+                    let s = String::from_utf8(v.to_vec()).unwrap();
+                    let s:Vec<&str> = s.split("|").collect();
+                    let meta_s:Vec<&str> = s[0].split(":").collect();
+                    let length = meta_s[0];
+                    let metadata = meta_s[1];
+                    //let expiration = meta_s[2];
+                    let content = s[1];
+
+                    let data = format!("VALUE {} {} {}\n{}\nEND\n", key, metadata, length, content);
+                    let _ = stream.write(data.as_bytes());
+                },
+                _ => {
+                    let _ = stream.write(END);
+                }
+            }
+            
+        }else{
+            trace!("get from other node-{}", source_node_id);
+            
+            match self.get_rt_by_guid(source_node_id){
+                Some(rt) => {
+                    
+                    trace!("trying to get data from: {:?}", rt);
+                    
+                    let mut dbc = DbClient::new(&rt.api_address());
+                    dbc.connect();
+                    match dbc.get_raw(key){
+                        Ok(result) => {
+                            let _ = stream.write(result.as_bytes());
+                            let _ = stream.flush();
+                        },
+                        Err(e) => {
+                            warn!("cannot get data from node-{}. {}", source_node_id, e);
+                            let _ = stream.write(END);
+                        }
+                    }
+                },
+                None => {
+                    let err_str = format!("cannot contact node-{}", source_node_id);
+                    error!("{}", err_str);
+                    //let _ = stream.write(END);
+                    let _ = stream.write(format!("SERVER_ERROR {}\r\n", err_str).as_bytes());
+                }
+            }
+            
         }
     }
     
