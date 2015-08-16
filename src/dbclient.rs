@@ -2,13 +2,13 @@
 
 use std::time::Duration;
 //use std;
-use std::thread;
-use std::net::TcpListener;
+//use std::thread;
+//use std::net::TcpListener;
 use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 //use std::str;
 use std::cell::RefCell;
-use std::io::BufReader;
+//use std::io::BufReader;
 
 #[derive(Debug)]
 pub struct DbClient {

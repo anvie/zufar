@@ -2,7 +2,7 @@ use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 use db::Db;
 use time;
-use std::sync::mpsc::Receiver;
+//use std::sync::mpsc::Receiver;
 use crc32::Crc32;
 use std::thread;
 use std::sync::{Arc, Mutex};
@@ -230,8 +230,10 @@ impl ApiService {
                             }
                         },
                         None => {
-                            error!("cannot contact node-{}", source_node_id);
-                            let _ = stream.write(END);
+                            let err_str = format!("cannot contact node-{}", source_node_id);
+                            error!("{}", err_str);
+                            //let _ = stream.write(END);
+                            let _ = stream.write(format!("SERVER_ERROR {}\r\n", err_str).as_bytes());
                         }
                     }
                     
