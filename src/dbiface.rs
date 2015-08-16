@@ -80,11 +80,18 @@ impl DbIface {
             return Ok(0);
         }
         
-        let c = self.me_state.borrow();
-        let c = c.as_ref().unwrap();
+        // let c = self.me_state.borrow();
+        // let c = c.as_ref().unwrap();
+        // 
+        // let my_guid = c.my_guid;
+        // let rts_count = c.rts_count;
+        let (my_guid, rts_count) = {
+            let inode = self.inode.clone();
+            let inode = inode.lock().unwrap();
+            let rts = inode.routing_tables.lock().unwrap();
+            (inode.my_guid, rts.len())
+        };
         
-        let my_guid = c.my_guid;
-        let rts_count = c.rts_count;
         
         trace!("rts_count: {}", rts_count);
 

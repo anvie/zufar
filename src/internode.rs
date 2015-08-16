@@ -72,11 +72,11 @@ impl MeState {
 
 
 pub struct InternodeService {
-    my_guid: u32,
+    pub my_guid: u32,
     my_node_address: String,
     my_api_address: String,
     the_encd: encd::PlainTextEncoderDecoder,
-    routing_tables: Arc<Mutex<Vec<RoutingTable>>>,
+    pub routing_tables: Arc<Mutex<Vec<RoutingTable>>>,
     seeds:Vec<String>,
     //tx:Sender<MeState>
 }

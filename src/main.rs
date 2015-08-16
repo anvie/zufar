@@ -146,11 +146,14 @@ fn main() {
 
 fn serve(api_address:&String, db_iface:DbIface){
     
+    let db_iface = Arc::new(Mutex::new(db_iface));
     
     let listener = TcpListener::bind(&**api_address).unwrap();
     println!("client comm listening at {} ...", api_address);
     for stream in listener.incoming() {
-
+        
+        let db_iface = db_iface.clone();
+        
         thread::spawn(move || {
             let mut stream = stream.unwrap();
             stream.write(b"Welcome to Zufar\r\n").unwrap();
@@ -160,13 +163,13 @@ fn serve(api_address:&String, db_iface:DbIface){
                 match stream.read(&mut buff){
                     Ok(count) if count > 0 => {
                         let data = &buff[0..count];
-                        
-                        // match db_iface.handle_packet(&mut stream, data){
-                        //     Ok(i) if i > 0 =>
-                        //         break 'the_loop
-                        //     ,
-                        //     _ => ()
-                        // }
+                        let mut db_iface = db_iface.lock().unwrap();
+                        match db_iface.handle_packet(&mut stream, data){
+                            Ok(i) if i > 0 =>
+                                break 'the_loop
+                            ,
+                            _ => ()
+                        }
                     },
                     Err(e) => panic!("error when reading. {}", e),
                     _ => ()
