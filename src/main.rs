@@ -127,7 +127,7 @@ fn main() {
 
     let (tx, rx) = channel();
     //if node_address.len() > 0 {
-        let mut inode = InternodeService::new(&node_address, &api_address, seeds, tx);
+        let inode = InternodeService::new(&node_address, &api_address, seeds, tx);
         
         InternodeService::setup_internode_communicator(&mut inode.clone());
     //}

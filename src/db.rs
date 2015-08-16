@@ -8,6 +8,7 @@ use std::io::{BufWriter, BufReader};
 use std::fs::File;
 use std::path::Path;
 use std::fs::OpenOptions;
+use time;
 
 use crc32::Crc32;
 
@@ -30,9 +31,11 @@ impl Db {
             if path.exists(){
                 // load data into memtable
                 info!("loading commitlog data into memtable...");
+
+                let ts = time::now().to_timespec().nsec;
+                
                 let mut file = BufReader::new(File::open(&path).unwrap());
                 for line in file.lines().filter_map(|result| result.ok()) {
-                    //println!("line: {}", line);
                     let s:Vec<&str> = line.split("|").collect();
                     let version = s[0];
                     let hash_key:u32 = s[1].parse().unwrap();
@@ -40,7 +43,10 @@ impl Db {
                     debug!("  (v{}) -> k: {}, content: {}", version, hash_key, content);
                     _memtable.insert(hash_key, content.into_bytes());
                 }
-                info!("loading commitlog done. {} record(s) added.", _memtable.len());
+                
+                let ts = (time::now().to_timespec().nsec - ts) / 1_000_000;
+                
+                info!("loading commitlog done. {} record(s) added in {}ms", _memtable.len(), ts);
             }
         }
 
