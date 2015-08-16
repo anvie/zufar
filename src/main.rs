@@ -33,16 +33,18 @@ use std::sync::{Arc, Mutex};
 
 #[macro_use] mod util;
 mod encd;
+mod cluster;
 mod internode;
 mod node;
 mod crc32;
 mod db;
-mod dbiface;
+mod api;
 mod dbclient;
 
-use dbiface::DbIface;
+use api::ApiService;
 use internode::MeState;
 use internode::InternodeService;
+//use cluster;
 
 
 docopt!(Args derive Debug, "
@@ -124,61 +126,23 @@ fn main() {
             }
         }
     }
+    
+    let info = Arc::new(Mutex::new(cluster::Info::new(&node_address, &api_address, seeds)));
 
-    let (tx, rx) = channel();
-    //if node_address.len() > 0 {
-        let inode = InternodeService::new(&node_address, &api_address, seeds, tx);
-        
-        InternodeService::setup_internode_communicator(&mut inode.clone());
-    //}
-    
-    let db_iface = DbIface::new(inode.clone(), rx);
-    
-    db_iface.start();
+    let inode = InternodeService::new(info.clone());
+
+    let api_service = ApiService::new(inode.clone(), info.clone());
+
+    InternodeService::start(inode);
 
     if args.cmd_serve {
-        serve(&api_address, db_iface);
+        api_service.start(&api_address);
     }
+
 }
 
 
 
-
-fn serve(api_address:&String, db_iface:DbIface){
-    
-    let db_iface = Arc::new(Mutex::new(db_iface));
-    
-    let listener = TcpListener::bind(&**api_address).unwrap();
-    println!("client comm listening at {} ...", api_address);
-    for stream in listener.incoming() {
-        
-        let db_iface = db_iface.clone();
-        
-        thread::spawn(move || {
-            let mut stream = stream.unwrap();
-            stream.write(b"Welcome to Zufar\r\n").unwrap();
-            
-            'the_loop: loop {
-                let mut buff = vec![0u8; 100];
-                match stream.read(&mut buff){
-                    Ok(count) if count > 0 => {
-                        let data = &buff[0..count];
-                        let mut db_iface = db_iface.lock().unwrap();
-                        match db_iface.handle_packet(&mut stream, data){
-                            Ok(i) if i > 0 =>
-                                break 'the_loop
-                            ,
-                            _ => ()
-                        }
-                    },
-                    Err(e) => panic!("error when reading. {}", e),
-                    _ => ()
-                }
-            }
-            
-        });
-    }
-}
 
 
 

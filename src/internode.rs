@@ -13,45 +13,9 @@ use std::cell::RefCell;
 use encd;
 use encd::MessageEncoderDecoder;
 use node::Node;
+use cluster;
+use cluster::RoutingTable;
 
-#[derive(Debug, Clone)]
-pub struct RoutingTable {
-    guid: u32,
-    node_address: String,
-    api_address: String,
-//    port: u16,
-//    socket_address: String
-}
-
-// impl Clone for RoutingTable {
-//     fn clone(&self) -> RoutingTable {
-//         RoutingTable {
-//             guid: self.guid,
-//             node_address: self.node_address.clone(),
-//             api_address: self.api_address.clone()
-//         }
-//     }
-// }
-
-impl RoutingTable {
-    pub fn new(guid: u32, node_address: String, api_address: String) -> RoutingTable {
-        RoutingTable {
-            guid: guid,
-            node_address: node_address,
-            api_address: api_address,
-//            port: port,
-//            socket_address: socket_address
-        }
-    }
-
-    pub fn node_address(&self) -> &String {
-        &self.node_address
-    }
-    
-    pub fn api_address(&self) -> &String {
-        &self.api_address
-    }
-}
 
 
 pub struct MeState {
@@ -73,11 +37,8 @@ impl MeState {
 
 pub struct InternodeService {
     pub my_guid: u32,
-    my_node_address: String,
-    my_api_address: String,
     the_encd: encd::PlainTextEncoderDecoder,
-    pub routing_tables: Arc<Mutex<Vec<RoutingTable>>>,
-    seeds:Vec<String>,
+    info: Arc<Mutex<cluster::Info>>
     //tx:Sender<MeState>
 }
 
@@ -86,27 +47,32 @@ type ZResult = Result<i32, &'static str>;
 
 impl InternodeService {
 
-    pub fn new(node_address:&String, api_address:&String, seeds:Vec<String>, tx:Sender<MeState>) -> Arc<Mutex<InternodeService>> {
+    pub fn new(info:Arc<Mutex<cluster::Info>>) -> Arc<Mutex<InternodeService>> {
         Arc::new(Mutex::new(InternodeService {
             my_guid: 0,
-            my_node_address: node_address.clone(),
-            my_api_address: api_address.clone(),
+            // my_node_address: node_address.clone(),
+            // my_api_address: api_address.clone(),
             the_encd: encd::PlainTextEncoderDecoder::new(),
-            routing_tables: Arc::new(Mutex::new(Vec::new())),
+            // routing_tables: Arc::new(Mutex::new(Vec::new())),
             //routing_tables: Vec::new(),
-            seeds: seeds,
-            //tx: tx
+            // seeds: seeds,
+            //tx: tx,
+            info: info
         }))
     }
 
-    pub fn setup_internode_communicator(inode:&mut Arc<Mutex<InternodeService>>){
+    pub fn start(_self:Arc<Mutex<InternodeService>>){
         
-        //let mut inode = *inode;
         
         let (my_guid, my_node_address, my_api_address, seeds) = {
-            let inode = inode.lock().unwrap();
-            (inode.my_guid, inode.my_node_address.clone(), inode.my_api_address.clone(), inode.seeds.clone())
+            let _self = _self.clone();
+            let _self = _self.lock().unwrap();
+            let info = _self.info.clone();
+            let info = info.lock().unwrap();
+            (info.my_guid, info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
         };
+        
+        //let _self = Arc::new(Mutex::new(self));
     
         // join the network
         for seed in seeds {
@@ -115,10 +81,12 @@ impl InternodeService {
                 Ok(ref mut stream) => {
 
                     // [VERSION]|join|[NODE-ADDRESS]|[API-ADDRESS]
-                    let mut inode = inode.lock().unwrap();
+                    //let mut inode = inode.lock().unwrap();
+                    //let info = info.lock().unwrap();
                     
-                    inode.send_cmd_and_handle(stream, &*format!("v1|join|{}|{}", my_node_address, my_api_address));
-                    inode.send_cmd_and_handle(stream, "v1|copy-rt");
+                    let mut _self = _self.lock().unwrap();
+                    _self.send_cmd_and_handle(stream, &*format!("v1|join|{}|{}", my_node_address, my_api_address));
+                    _self.send_cmd_and_handle(stream, "v1|copy-rt");
 
                     trace!("join network done.");
                 },
@@ -130,8 +98,8 @@ impl InternodeService {
         
         //let my_node_address = node_address.clone();
         {
-            let inode = inode.lock().unwrap();
-            inode.setup_network_keeper();
+            let mut _self = _self.lock().unwrap();
+            _self.setup_network_keeper();
         }
 
         //let static_self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) };
@@ -140,7 +108,15 @@ impl InternodeService {
         //let my_guid = inode.my_guid;
         //let routing_tables = inode.routing_tables;
         
-        let inode = inode.clone();
+        //let inode = inode.clone();
+        
+        //let inode = Arc::new(Mutex::new(self));
+        
+        let _self = _self.clone();
+        let info = {
+            _self.lock().unwrap().info.clone()
+        };
+        
         
         thread::spawn(move || {
             
@@ -148,7 +124,8 @@ impl InternodeService {
             println!("internode comm listening at {} ...", my_node_address);
             for stream in listener.incoming() {
                 
-                let inode = inode.clone();
+                let _self = _self.clone();
+                let info = info.clone();
                 
                 thread::spawn(move || {
 
@@ -156,8 +133,7 @@ impl InternodeService {
 
                     'the_loop: loop {
                         
-                        let inode = inode.lock().unwrap();
-                        let mut routing_tables = inode.routing_tables.lock().unwrap();
+                        //let inode = inode.lock().unwrap();
 
                         
                         let mut buff = vec![0u8; 100];
@@ -165,12 +141,14 @@ impl InternodeService {
                             Ok(count) if count == 0 => break 'the_loop,
                             Ok(count) => {
 
+                                let _self = _self.lock().unwrap();
+                                
                                 //let mut z = z.lock().unwrap();
 
                                 // let data = String::from_utf8(buff[0..count].to_vec()).unwrap();
                                 //let data = z.the_encd.decode(&buff[0..count]).ok().unwrap();
                                 
-                                let data = inode.the_encd.decode(&buff[0..count]).ok().unwrap();
+                                let data = _self.the_encd.decode(&buff[0..count]).ok().unwrap();
 
                                 debug!("read {} bytes : {:?}", count, &data);
                                 if data.len() == 0 {
@@ -185,7 +163,7 @@ impl InternodeService {
                                     }else{
                                         info!("got ping from {} (node-??)", stream.peer_addr().ok().unwrap());
                                     }
-                                    inode.write(&mut stream, "pong");
+                                    _self.write(&mut stream, "pong");
                                     continue 'the_loop;
                                 }
 
@@ -210,7 +188,7 @@ impl InternodeService {
 
                                 debug!("got cmd: {}", &cmd);
 
-                                match inode.process_cmd(cmd, &s, &mut stream){
+                                match _self.process_cmd(cmd, &s, &mut stream){
                                     Ok(i) if i != 0 => {
                                         break 'the_loop;
                                     },
@@ -276,16 +254,21 @@ impl InternodeService {
                 // add first connected seed to routing tables
                 let seed_guid:u32 = s[3].parse().unwrap();
                 let pa = &stream.peer_addr().ok().unwrap();
-                let connected_seed_addr = format!("{}", pa.ip());
-                info!("added {}:{} to the rts with guid {}", connected_seed_addr, pa.port(), seed_guid);
+                let connected_seed_addr = format!("{}:{}", pa.ip(), pa.port());
+                info!("added {} to the rts with guid {}", connected_seed_addr, seed_guid);
                 {
-                    let mut rts = self.routing_tables.lock().unwrap();
-                    rts.push(RoutingTable::new(seed_guid, connected_seed_addr, self.my_api_address.clone()));
+                    let mut info = self.info.lock().unwrap();
+                    let my_api_address = info.my_api_address.clone();
+                    let mut rts = &mut info.routing_tables;
+                    rts.push(RoutingTable::new(seed_guid, connected_seed_addr, my_api_address));
                     debug!("rts count now: {}", rts.len());
                 }
                 
             },
-            &"rt" => {
+            &"rt" => { 
+                
+                //// v1|rt|1,127.0.0.1:7123,127.0.0.1:7122
+                //// [VERSION]|rt|[GUID],[NODE-ADDRESS],[API-ADDRESS]
                 
                 let ss = &s[2..];
                 
@@ -296,22 +279,24 @@ impl InternodeService {
                         continue;
                     }
                     let node_address = s[1].to_string();
-                    //let port:u16 = s[2].parse().unwrap();
-                    
-                    let api_address = s[3].to_string();
+                    let api_address = s[2].to_string();
                     
                     if guid != self.my_guid {
                         info!("added {} to the rts with guid {}", node_address, guid);
                         
+                        let mut info = self.info.lock().unwrap();
                         {
-                            let mut rts = self.routing_tables.lock().unwrap();
+                            let mut rts = &mut info.routing_tables;
                             rts.push(RoutingTable::new(guid, node_address.clone(), api_address.clone()));
                             debug!("rts count now: {}", rts.len());
                         }
                         
                         // request to add me 
+                        let (my_node_address, my_api_address) = (&info.my_node_address, &info.my_api_address);
                         let mut node = Node::new(guid, &node_address, &api_address); //&format!("node: {} - api: {}", ip_addr, api_addr));
-                        node.add_to_rts(Node::new(self.my_guid, &self.my_node_address, &self.my_api_address));
+                        node.add_to_rts(Node::new(info.my_guid, &my_node_address, &my_api_address));
+                        
+                    
                     }
                 }
                 
@@ -334,9 +319,11 @@ impl InternodeService {
         //let _self:&'static mut InternodeService = unsafe{ std::mem::transmute(self) }; //Arc::new(unsafe{ std::mem::transmute(self) });
         //let mut _self = _self.clone();
         
-        let rts = self.routing_tables.clone();
-        let rts2 = self.routing_tables.clone();
-        let my_guid = self.my_guid;
+        let info = self.info.clone();
+        
+        //let rts = info.routing_tables.clone();
+        //let rts2 = info.routing_tables.clone();
+        //let my_guid = info.my_guid;
         
         thread::spawn(move || {
             //let mut cycle = 0;
@@ -347,15 +334,15 @@ impl InternodeService {
                 {
                     let mut to_remove:Vec<u32> = Vec::new();
 
-
-                    //let mut _self = z.lock().unwrap();
-                    let mut routing_tables = rts.lock().unwrap();
+                    let mut info = info.lock().unwrap();
+                    let my_guid = info.my_guid;
+                    let mut routing_tables = &mut info.routing_tables;
                     
                     for rt in &*routing_tables {
-                        debug!("   -> {}", rt.node_address);
+                        debug!("   -> {}", rt.node_address());
                         //debug!("   -> {:?}", rt);
 
-                        let addr:SocketAddr = rt.node_address.parse().unwrap();
+                        let addr:SocketAddr = rt.node_address().parse().unwrap();
                         match TcpStream::connect(addr){
                             Ok(ref mut stream) => {
                                 let _ = stream.write(format!("ping|{}", my_guid).as_bytes());
@@ -365,13 +352,13 @@ impl InternodeService {
                                         let data = String::from_utf8(buff).ok().unwrap();
                                         debug!("got {}", data);
                                     },
-                                    _ => to_remove.push(rt.guid)
+                                    _ => to_remove.push(rt.guid())
                                 }
                             },
                             Err(e) => {
                                 // remove from routing tables
                                 debug!("{} not reached: {}, removed from routing tables.", addr, e);
-                                to_remove.push(rt.guid);
+                                to_remove.push(rt.guid());
                             }
                         }
 
@@ -385,7 +372,7 @@ impl InternodeService {
                         
                         let idx = {
                             let mut it = routing_tables.iter();
-                            match it.position(|p| p.guid == guid){
+                            match it.position(|p| p.guid() == guid){
                                 Some(i) => i as i32,
                                 None => -1
                             }
@@ -459,11 +446,11 @@ impl InternodeService {
 
 
                 match self.get_rt(stream){
-                    Some(ref rt) if rt.node_address == peer_addr => {
-                        warn!("ip {} already joined as guid {}", rt.node_address, rt.guid);
+                    Some(ref rt) if rt.node_address() == peer_addr => {
+                        warn!("ip {} already joined as guid {}", rt.node_address(), rt.guid());
 
                         // just send existing guid
-                        let data = &format!("v1|guid|{}|{}\n", rt.guid, self.my_guid);
+                        let data = &format!("v1|guid|{}|{}\n", rt.guid(), self.my_guid);
                         //stream.write(&*self.the_encd.encode(data).ok().unwrap());
                         self.write(stream, data);
 
@@ -491,7 +478,8 @@ impl InternodeService {
                 let api_address = params[3];
 
                 {
-                    let mut rts = self.routing_tables.lock().unwrap();
+                    let mut info = self.info.lock().unwrap();
+                    let mut rts = &mut info.routing_tables;
                     rts.push(RoutingTable::new(guid, peer_addr.to_string(), api_address.to_string()));
                 }
 
@@ -510,7 +498,8 @@ impl InternodeService {
                 if guid > 0 {
                     let idx = self.node_index(guid) as usize;
                     {
-                        let mut rts = self.routing_tables.lock().unwrap();
+                        let mut info = self.info.lock().unwrap();
+                        let mut rts = &mut info.routing_tables;
                         let x = rts.swap_remove(idx);    
                         debug!("removing node {:?} from routing tables", x);
                     }
@@ -522,16 +511,17 @@ impl InternodeService {
             },
             "copy-rt" => { // copy routing tables
 
-                if self.get_guid_from_stream(stream) > 0 {
+                //if self.get_guid_from_stream(stream) > 0 {
                     trace!("copy routing tables...");
 
                     {
-                        let rts = self.routing_tables.lock().unwrap();
+                        let mut info = self.info.lock().unwrap();
+                        let mut rts = &mut info.routing_tables;
                         
-                        println!("routing tables: {:?}", *rts);
+                        println!("routing tables: {:?}", rts);
                         
                         let rtb:Vec<String> = rts.iter()
-                            .map(|rt| format!("{},{},{}", rt.guid, rt.node_address, rt.api_address))
+                            .map(|rt| format!("{},{},{}", rt.guid(), rt.node_address(), rt.api_address()))
                             .collect();
                         let data = format!("v1|rt|{}", rtb.join("|"));
 
@@ -539,9 +529,9 @@ impl InternodeService {
                     }
 
                     Ok(0)
-                }else{
-                    Err("not registered as node")
-                }
+                // }else{
+                //                     Err("not registered as node")
+                //                 }
             },
             "add-me" => {
                 
@@ -555,7 +545,9 @@ impl InternodeService {
                     
 
                     {
-                        let mut rts = self.routing_tables.lock().unwrap();
+                        let mut info = self.info.lock().unwrap();
+                        let mut rts = &mut info.routing_tables;
+                        
                         let node_address = params[2];
                         let api_address = params[3];
 
@@ -583,7 +575,7 @@ impl InternodeService {
 
     fn get_guid_from_stream(&self, stream: &TcpStream) -> u32 {
         match self.get_rt(stream) {
-            Some(ref rt) => rt.guid,
+            Some(ref rt) => rt.guid(),
             None => 0,
         }
     }
@@ -592,9 +584,9 @@ impl InternodeService {
     //     &mut self.routing_tables
     // }
     
-    pub fn routing_tables<'a>(&'a self) -> &'a Arc<Mutex<Vec<RoutingTable>>> {
-        &self.routing_tables
-    }
+    // pub fn routing_tables<'a>(&'a self) -> &'a Arc<Mutex<Vec<RoutingTable>>> {
+    //     &self.routing_tables
+    // }
 
     fn get_rt<'a>(&'a self, stream: &TcpStream) -> Option<RoutingTable> {
         let socket_ip_address = match stream.peer_addr() {
@@ -607,26 +599,29 @@ impl InternodeService {
             }
         };
         
-        let rts = self.routing_tables.lock().unwrap();
-        match rts.iter().find(|r| r.node_address == socket_ip_address){
+        let info = self.info.lock().unwrap();
+        let rts = &info.routing_tables;
+        match rts.iter().find(|r| *r.node_address() == socket_ip_address){
             Some(rt) => Some(rt.clone()),
             None => None
         }
     }
     
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
-        let rts = self.routing_tables.lock().unwrap();
+        let info = self.info.lock().unwrap();
+        let rts = &info.routing_tables;
         
-        match rts.iter().find(|&r| r.guid == guid){
+        match rts.iter().find(|&r| r.guid() == guid){
             Some(rt) => Some(rt.clone()),
             None => None
         }
     }
 
     fn node_index(&self, id:u32) -> i32 {
-        let rts = self.routing_tables.lock().unwrap();
+        let info = self.info.lock().unwrap();
+        let rts = &info.routing_tables;
         let mut it = rts.iter();
-        match it.position(|p| p.guid == id){
+        match it.position(|p| p.guid() == id){
             Some(i) => i as i32,
             None => -1
         }
