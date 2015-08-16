@@ -8,26 +8,29 @@ use std::str;
 #[derive(Debug)]
 pub struct Node {
     guid: u32,
-    address: String
+    node_address: String,
+    api_address: String
 }
 
 impl Node {
     
-    pub fn new(guid:u32, address:&String) -> Node {
+    pub fn new(guid:u32, node_address:&String, api_address:&String) -> Node {
         Node {
             guid: guid,
-            address: address.clone()
+            node_address: node_address.clone(),
+            api_address: api_address.clone()
         }
     }
     
     pub fn add_to_rts(&mut self, node:Node){
         debug!("adding {:?} to {:?} rts", &node, self);
         
-        let addr:SocketAddr = self.address.parse().unwrap();
+        let addr:SocketAddr = self.node_address.parse().unwrap();
         match TcpStream::connect(addr){
             Ok(ref mut stream) => {
 
-                self.send_cmd_and_handle(stream, &*format!("v1|add-me|{}|{}", node.guid, node.address));
+                self.send_cmd_and_handle(stream, &*format!("v1|add-me|{}|{}|{}", 
+                    node.guid, node.node_address, node.api_address));
 
                 trace!("add to rts done.");
             },

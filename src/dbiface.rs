@@ -8,7 +8,8 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 
-use internode::MeState;
+use internode::{MeState, InternodeService};
+use dbclient::DbClient;
 
 
 pub struct DbIface {
@@ -16,17 +17,21 @@ pub struct DbIface {
     //rx: Receiver<u32>,
     //rts_count: usize,
     pub me_state: RefCell<Option<MeState>>,
-    crc32: Crc32
+    crc32: Crc32,
+    inode:Arc<Mutex<InternodeService>>,
+    rx:Receiver<MeState>
 }
 
 impl DbIface {
-    pub fn new() -> DbIface {        
+    pub fn new(inode:Arc<Mutex<InternodeService>>, rx:Receiver<MeState>) -> DbIface {        
         DbIface {
             db: Db::new(),
             //rx: rx,
             //rts_count: 0,
             me_state: RefCell::new(None),
-            crc32: Crc32::new()
+            crc32: Crc32::new(),
+            inode: inode,
+            rx: rx
         }
     }
     
@@ -37,6 +42,32 @@ impl DbIface {
     // pub fn rts_count(&self) -> usize {
     //     self.rts_count
     // }
+    
+    pub fn start(&self){
+    //         thread::spawn(move || {
+    //             loop {
+    //                 // let mut dbi = _db_iface.lock().unwrap();
+    // 
+    //                 match rx.recv(){
+    //                     Ok(me_state) => {
+    //                         let mut dbi = _db_iface.lock().unwrap();
+    // 
+    //                         let mut c = dbi.me_state.borrow_mut();
+    //                         *c = Some(me_state);
+    // 
+    //                         //dbi.set_rts_count(me_state.rts_count);
+    // 
+    //                         //let mut rts_count = _rts_count.lock().unwrap();
+    //                         //*rts_count = count;
+    //                         debug!("rts_count updated via rx: {}", c.as_ref().unwrap().rts_count);
+    //                     },
+    //                     _ => ()
+    //                 };
+    //                 debug!("recv..");
+    //                 //thread::sleep_ms(100);
+    //             }
+    //         });
+    }
     
     pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8]) -> Result<u16, &'static str> {
 
@@ -69,7 +100,7 @@ impl DbIface {
                 let expiration:u32 = s[3].parse().unwrap();
                 let length:usize = s[4].parse().unwrap();
 
-                let _ = stream.write(b"read for data >\n");
+                let _ = stream.write(b">\n");
 
                 let mut buff = vec![0u8; length];
                 match stream.read(&mut buff){
@@ -93,7 +124,15 @@ impl DbIface {
                             self.db.insert(k.as_bytes(), data.as_bytes());
                         }else{
                             // on other node
+                            // let rts = self.inode.routing_tables();
+                            // let rts = rts.clone();
+                            // let rts = rts.lock().unwrap();
                             
+                            let inode = self.inode.lock().unwrap();
+                            let rt = inode.get_rt_by_guid(target_node_id).unwrap();
+                            let mut dbc = DbClient::new(&rt.api_address());
+                            dbc.connect();
+                            dbc.set(k, &*data);
                         }
                         
                         

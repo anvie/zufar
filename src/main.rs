@@ -42,6 +42,7 @@ mod dbclient;
 
 use dbiface::DbIface;
 use internode::MeState;
+use internode::InternodeService;
 
 
 docopt!(Args derive Debug, "
@@ -70,7 +71,7 @@ fn main() {
         return;
     }
 
-    let mut host_n_port = format!("{}:{}", args.arg_host, args.arg_port.unwrap_or(9123));
+    let mut api_address = format!("{}:{}", args.arg_host, args.arg_port.unwrap_or(9123));
     let mut node_address:String = String::new();
     let mut seeds:Vec<String> = Vec::new();
 
@@ -88,7 +89,7 @@ fn main() {
                 match cfg.get("zufar"){
                     Some(&Value::Table(ref section)) => {
                         match section.get("listen_address"){
-                            Some(&Value::String(ref hnp)) => host_n_port = hnp.clone(),
+                            Some(&Value::String(ref hnp)) => api_address = hnp.clone(),
                             _ => err!(2, "No `listen_address` in configuration.")
                         }
                         match section.get("node_address"){
@@ -125,56 +126,31 @@ fn main() {
     }
 
     let (tx, rx) = channel();
-    if node_address.len() > 0 {
-        let mut inode = internode::InternodeService::new();
-        inode.setup_internode_communicator(&node_address, seeds, tx);
-    }
+    //if node_address.len() > 0 {
+        let mut inode = InternodeService::new(&node_address, &api_address, seeds, tx);
+        
+        InternodeService::setup_internode_communicator(&mut inode.clone());
+    //}
+    
+    let db_iface = DbIface::new(inode.clone(), rx);
+    
+    db_iface.start();
 
     if args.cmd_serve {
-        serve(&host_n_port, rx);
+        serve(&api_address, db_iface);
     }
 }
 
 
 
 
-fn serve(host_n_port:&String, rx:Receiver<MeState>){
+fn serve(api_address:&String, db_iface:DbIface){
     
-    let db_iface = Arc::new(Mutex::new(DbIface::new()));
     
-    let _db_iface = db_iface.clone();
-    //let mut rts_count = Arc::new(Mutex::new(0));
-    //let mut _rts_count = rts_count.clone();
-    
-    thread::spawn(move || {
-        loop {
-            // let mut dbi = _db_iface.lock().unwrap();
-            
-            match rx.recv(){
-                Ok(me_state) => {
-                    let mut dbi = _db_iface.lock().unwrap();
-                    
-                    let mut c = dbi.me_state.borrow_mut();
-                    *c = Some(me_state);
-                    
-                    //dbi.set_rts_count(me_state.rts_count);
-                    
-                    //let mut rts_count = _rts_count.lock().unwrap();
-                    //*rts_count = count;
-                    debug!("rts_count updated via rx: {}", c.as_ref().unwrap().rts_count);
-                },
-                _ => ()
-            };
-            debug!("recv..");
-            //thread::sleep_ms(100);
-        }
-    });
-    
-    let listener = TcpListener::bind(&**host_n_port).unwrap();
-    println!("client comm listening at {} ...", host_n_port);
+    let listener = TcpListener::bind(&**api_address).unwrap();
+    println!("client comm listening at {} ...", api_address);
     for stream in listener.incoming() {
-        let db_iface = db_iface.clone();
-        //let rts_count = rts_count.clone();
+
         thread::spawn(move || {
             let mut stream = stream.unwrap();
             stream.write(b"Welcome to Zufar\r\n").unwrap();
@@ -184,14 +160,13 @@ fn serve(host_n_port:&String, rx:Receiver<MeState>){
                 match stream.read(&mut buff){
                     Ok(count) if count > 0 => {
                         let data = &buff[0..count];
-                        let mut db_iface = db_iface.lock().unwrap();
-                        // let rts_count = rts_count.lock().unwrap();
-                        match db_iface.handle_packet(&mut stream, data){
-                            Ok(i) if i > 0 =>
-                                break 'the_loop
-                            ,
-                            _ => ()
-                        }
+                        
+                        // match db_iface.handle_packet(&mut stream, data){
+                        //     Ok(i) if i > 0 =>
+                        //         break 'the_loop
+                        //     ,
+                        //     _ => ()
+                        // }
                     },
                     Err(e) => panic!("error when reading. {}", e),
                     _ => ()
