@@ -199,16 +199,24 @@ impl ApiService {
                     return Err("bad parameter length");
                 }
                 
-                let k = s[1];
-                
-                
+                let key = s[1];
 
-                let ts = time::now().to_timespec().nsec;
-                self.op_get(k, stream, my_guid, rts_count);
-                let ts = (time::now().to_timespec().nsec - ts) as f32 / 1_000_000f32;
+                let ts = time::now().to_timespec();
+
+                let ms = (ts.sec * 1000) + (ts.nsec / 1_000_000) as i64;
                 
-                stream.write(format!("in {}ms\r\n", (ts as f32 * 0.100f32)).as_bytes());
-                info!("get record done in {}ms", ts);
+                self.op_get(key, stream, my_guid, rts_count);
+                
+                let ts2 = time::now().to_timespec();
+                let ms2 = (ts2.sec * 1000) + (ts2.nsec / 1_000_000) as i64;
+                
+                let ms = (ms2 - ms);
+                
+                let target_node_id = self.calculate_route(key, rts_count); 
+                
+                stream.write(format!("from node-{}\r\n", target_node_id).as_bytes());
+                stream.write(format!("in {}ms\r\n", ms).as_bytes());
+                info!("get record done in {}ms", ms);
 
                 Ok(0)
             },
@@ -242,7 +250,7 @@ impl ApiService {
     
     fn op_del(&mut self, key:&str, stream:&mut TcpStream, my_guid:u32, rts_count:usize){
         // calculate route
-        let target_node_id = self.calculate_route(key, rts_count);        
+        let target_node_id = self.calculate_route(key, rts_count); 
         
         debug!("key {} target_node_id: {}", key, target_node_id);
         
