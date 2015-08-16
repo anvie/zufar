@@ -10,6 +10,7 @@ use std::io::prelude::*;
 use std::cell::RefCell;
 //use std::io::BufReader;
 use std::error::Error;
+use std::net::Shutdown;
 
 type DbcResult = Result<String,&'static str>;
 
@@ -31,13 +32,12 @@ impl DbClient {
     pub fn connect(&self) -> Result<u16, &'static str> {
         let addr:SocketAddr = self.address.parse().unwrap();
         match TcpStream::connect(addr){
-            Ok(mut stream) => {
+            Ok(stream) => {
 
                 let _ = stream.set_read_timeout(Some(Duration::new(5, 0)));
                 
                 // clean up welcome message
-
-                let _ = stream.read(&mut [0u8; 128]);
+                //let _ = stream.read(&mut [0u8; 128]);
                 
                 let mut s = self.stream.borrow_mut();
                 
@@ -57,11 +57,11 @@ impl DbClient {
         
         if s.is_some() {
             let mut stream = s.as_ref().unwrap();
-            let data = format!("set {} 1 0 {}\r\n", key, v.len());
+            let data = format!("set {} 0 0 {} \r\n", key, v.len());
             let _ = stream.write(data.as_bytes());
-            let _ = stream.flush();
+            // let _ = stream.flush();
             
-            let _ = stream.read(&mut [0u8; 512]);
+            // let _ = stream.read(&mut [0u8; 512]);
             
             let _ = stream.write(v.as_bytes());
             let _ = stream.flush();
@@ -75,12 +75,24 @@ impl DbClient {
         if s.is_some() {
             let mut stream = s.as_ref().unwrap();
             let data = format!("get {}", key);
+            
+            trace!("querying server with: {}", data);
+            
             let _ = stream.write(data.as_bytes());
             let _ = stream.flush();
             let mut buff = vec![0u8; 256];
+            
+            trace!("reading...");
+            
             match stream.read(&mut buff) {
                 Ok(count) if count > 0 => {
+                    
+                    trace!("done reading with {} bytes", count);
+                    
                     let content = String::from_utf8(buff[0..count].to_vec()).unwrap();
+                    
+                    trace!("content: {}", content);
+                    
                     // if content.trim() != "END" {
                         Ok(content)
                     // }else{
@@ -130,7 +142,7 @@ impl DbClient {
     }
 }
 
-use std::net::Shutdown;
+
 
 impl Drop for DbClient {
     fn drop(&mut self){
