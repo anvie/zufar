@@ -86,7 +86,6 @@ impl Db {
     }
     
     pub fn insert(&mut self, k:&[u8], v:&[u8]){
-        //let mut crc32 = Crc32::new();
         self.memtable_eden.insert(self.crc32.crc(k), v.to_vec());
         //self.flush();
     }
@@ -98,22 +97,16 @@ impl Db {
         // let _self = _self.borrow();
         let key_hashed = self.crc32.crc(k);
         
-        let mut rv:Option<&[u8]> = None;
-        
-        {
-            // let mt = &mut self.memtable;
-            let _rv = unsafe { (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref()) };
-            if _rv.is_some(){
-                rv = _rv.clone()
+        let rv = unsafe { (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref()) };
+        if rv.is_some(){
+            rv
+        }else{
+            // try search in eden 
+            let rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref()).clone();
+            
+            if rv.is_some(){
+                rv
             }else{
-                // try search in eden 
-                rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref()).clone();
-            }
-        };
-        
-        
-        {
-            if rv.is_none(){
                 // try search in rocks
                 // let mt = &mut self.memtable;
                 
@@ -130,28 +123,29 @@ impl Db {
                         
                         unsafe {
                             (*self.memtable.get()).insert(key_hashed, (&*x).to_vec());
-                            rv = (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref());
+                            (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref())
                         }
-                        // Some(&*x)
                     },
-                    _ => rv = None,
+                    _ => None,
                 }
-                // if rv.is_some(){
-                //     Some(rv.unwrap())
-                // }else{
-                //     None
-                // }
             }
+            
         }
-        
-        rv
+    
+    
     }
     
     pub fn del(&mut self, key:&[u8]) -> usize {
         let hash_key = self.crc32.crc(key);
         if self.memtable_eden.remove(&hash_key).is_none(){
            unsafe {
-                if (*self.memtable.get()).remove(&hash_key).is_none(){               
+                if (*self.memtable.get()).remove(&hash_key).is_none(){
+                    
+                    // try remove from rocks
+                    let mut wtr = Vec::with_capacity(4);
+                    wtr.write_u32::<LittleEndian>(hash_key).unwrap();
+                    self.rocksdb.delete(&*wtr).unwrap();
+                    
                     return 0;
                 }
            }
