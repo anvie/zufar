@@ -4,7 +4,7 @@ extern crate test;
 use std::collections::BTreeMap;
 
 use std::io::prelude::*;
-use std::io::{BufWriter, BufReader};
+use std::io::{BufWriter, BufReader, SeekFrom};
 use std::fs::File;
 use std::path::Path;
 use std::fs::OpenOptions;
@@ -198,6 +198,7 @@ impl Db {
         self._flush_counter = self._flush_counter + 1;
         
         if self._flush_counter > 5 {
+            self._flush_counter = 0;
             unsafe {
                 info!("flusing to rocks...");
                 let mut batch = WriteBatch::new();
@@ -218,6 +219,7 @@ impl Db {
             // clean up old memtable
             unsafe {
                 (*self.memtable.get()).clear();
+                self.fstore.seek(SeekFrom::Start(0u64));
             }
         }
         
