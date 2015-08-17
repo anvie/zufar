@@ -11,6 +11,8 @@ use std::net::Shutdown;
 use std::collections::HashMap;
 use std::net::TcpListener;
 
+use nix::sys::signal;
+
 
 use internode::{MeState, InternodeService};
 use dbclient::DbClient;
@@ -35,8 +37,16 @@ pub struct ApiService {
     db_client_cache: HashMap<u32, DbClient<BackoffRetryPolicy>>
 }
 
+// static mut global_db:Option<Db> = None;
+
 impl ApiService {
     pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {        
+        
+        
+        //let db = Db::new();
+
+        // global_db = Some(db);
+
         ApiService {
             db: Db::new(),
             //rx: rx,
@@ -82,6 +92,15 @@ impl ApiService {
                 }
 
             });
+        }
+        
+        
+        //@TODO(robin): check this, not working??? Should be working with ^C
+        {
+            info!("flushing...");
+            let api_service = api_service.clone();
+            let mut api_service = api_service.lock().unwrap();
+            api_service.flush();
         }
         
     //         thread::spawn(move || {
@@ -439,6 +458,10 @@ impl ApiService {
         }else{
             0u32
         }
+    }
+    
+    pub fn flush(&mut self){
+        self.db.flush();
     }
 }
 

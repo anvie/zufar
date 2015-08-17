@@ -14,6 +14,7 @@ log = "0.3"
 env_logger = "0.3"
 rand = "0.3"
 time = "0.1"
+nix = "*"
 
 [dependencies.msgpack]
 git = "https://github.com/mneumann/rust-msgpack.git"

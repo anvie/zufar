@@ -17,6 +17,7 @@ extern crate byteorder;
 extern crate env_logger;
 extern crate rand;
 extern crate time;
+extern crate nix;
 
 use std::net::TcpListener;
 use std::thread;
@@ -24,13 +25,13 @@ use std::io::prelude::*;
 use std::fs::File;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Receiver, Sender};
-
-use docopt::Docopt;
-
-use toml::Value;
-
 use std::net::{TcpStream, SocketAddr};
 use std::sync::{Arc, Mutex};
+use std::process;
+
+use docopt::Docopt;
+use toml::Value;
+use nix::sys::signal;
 
 #[macro_use] mod util;
 mod encd;
@@ -46,6 +47,8 @@ use api::ApiService;
 //use internode::MeState;
 use internode::InternodeService;
 //use cluster;
+
+
 
 
 docopt!(Args derive Debug, "
@@ -65,6 +68,8 @@ Options:
 fn main() {
 
     env_logger::init().unwrap();
+    
+    
 
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
     println!("{:?}", args);
@@ -135,6 +140,20 @@ fn main() {
     let api_service = ApiService::new(inode.clone(), info.clone());
 
     InternodeService::start(inode);
+    
+    // extern fn handle_sigint(_:i32){
+    //     println!("Interrupted!");
+    //     api_service.flush();
+    //     process::exit(1);
+    // }
+    // 
+    // let sig_action = signal::SigAction::new(handle_sigint,
+    //                                           signal::SockFlag::empty(),
+    //                                           signal::SigSet::empty());
+    // unsafe {
+    //     signal::sigaction(signal::SIGINT, &sig_action);
+    // }
+
 
     if args.cmd_serve {
         api_service.start(&api_address);
