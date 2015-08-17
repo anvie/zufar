@@ -8,7 +8,7 @@ use std::io::{BufWriter, BufReader};
 use std::fs::File;
 use std::path::Path;
 use std::fs::OpenOptions;
-use std::cell::{RefCell, RefMut};
+use std::cell::{RefCell, RefMut, UnsafeCell};
 use std::rc::Rc;
 
 use time;
@@ -21,7 +21,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 
 pub struct Db {
     memtable_eden: BTreeMap<u32, Vec<u8>>,
-    memtable: BTreeMap<u32, Vec<u8>>,
+    memtable: UnsafeCell<BTreeMap<u32, Vec<u8>>>,
     fstore: File,
     crc32: Crc32,
     rocksdb: RocksDB,
@@ -77,7 +77,7 @@ impl Db {
         
         Db {
             memtable_eden: BTreeMap::new(),
-            memtable: _memtable,
+            memtable: UnsafeCell::new(_memtable),
             fstore: file,
             crc32: Crc32::new(),
             rocksdb: rocksdb,
@@ -91,50 +91,58 @@ impl Db {
         //self.flush();
     }
     
-    pub fn get<'a>(&'a mut self, k:&[u8]) -> Option<&'a [u8]> {
+    pub fn get(&mut self, k:&[u8]) -> Option<&[u8]> {
         
         // let _self = Rc::new(RefCell::new(self));
         
         // let _self = _self.borrow();
         let key_hashed = self.crc32.crc(k);
         
-        let rv:Option<&[u8]> = {
+        let mut rv:Option<&[u8]> = None;
+        
+        {
             // let mt = &mut self.memtable;
-            let _rv = self.memtable.get(&key_hashed).map(|d| d.as_ref());
+            let _rv = unsafe { (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref()) };
             if _rv.is_some(){
-                _rv
+                rv = _rv.clone()
             }else{
                 // try search in eden 
-                self.memtable_eden.get(&key_hashed).map(|d| d.as_ref())
+                rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref()).clone();
             }
         };
         
         
-        // {
-        //     if rv.is_some(){
-        //         rv
-        //     }else{
-        //         // try search in rocks
-        //         // let mt = &mut self.memtable;
-        //         let mut wtr = Vec::with_capacity(4);
-        //         wtr.write_u32::<LittleEndian>(key_hashed).unwrap();
-        //         match self.rocksdb.get(&*wtr){//.map(|d| d.as_ref()){
-        //             RocksDBResult::Some(x) => {
-        //                 //self.insert(k, &*x);
-        //                 //self.get(k)
-        //                 self.memtable.insert(key_hashed, (&*x).to_vec());
-        //                 self.memtable.get(&key_hashed).map(|d| d.as_ref())
-        //                 // Some(&*x)
-        //             },
-        //             _ => None
-        //         }
-        //         // if rv.is_some(){
-        //         //     Some(rv.unwrap())
-        //         // }else{
-        //         //     None
-        //         // }
-        //     }
-        // }
+        {
+            if rv.is_none(){
+                // try search in rocks
+                // let mt = &mut self.memtable;
+                
+                debug!("not found both from old and eden memtable, try to find in rocks");
+                
+                let mut wtr = Vec::with_capacity(4);
+                wtr.write_u32::<LittleEndian>(key_hashed).unwrap();
+                match self.rocksdb.get(&*wtr){//.map(|d| d.as_ref()){
+                    RocksDBResult::Some(x) => {
+                        //self.insert(k, &*x);
+                        //self.get(k)
+                        
+                        trace!("got from rocks, adding into old memtable for recent use.");
+                        
+                        unsafe {
+                            (*self.memtable.get()).insert(key_hashed, (&*x).to_vec());
+                            rv = (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref());
+                        }
+                        // Some(&*x)
+                    },
+                    _ => rv = None,
+                }
+                // if rv.is_some(){
+                //     Some(rv.unwrap())
+                // }else{
+                //     None
+                // }
+            }
+        }
         
         rv
     }
@@ -142,9 +150,10 @@ impl Db {
     pub fn del(&mut self, key:&[u8]) -> usize {
         let hash_key = self.crc32.crc(key);
         if self.memtable_eden.remove(&hash_key).is_none(){
-           if self.memtable.remove(&hash_key).is_none(){
-               
-               return 0;
+           unsafe {
+                if (*self.memtable.get()).remove(&hash_key).is_none(){               
+                    return 0;
+                }
            }
         }
         return 1;
@@ -178,10 +187,10 @@ impl Db {
         // move flushed data
         let mut count = 0;
         
-        {
+        unsafe {
             let iter = self.memtable_eden.iter();
             for (k, v) in iter {
-                self.memtable.insert(*k, v.clone());
+                (*self.memtable.get()).insert(*k, v.clone());
                 count = count + 1;
             }
         }
@@ -195,10 +204,10 @@ impl Db {
         self._flush_counter = self._flush_counter + 1;
         
         if self._flush_counter > 5 {
-            {
+            unsafe {
                 info!("flusing to rocks...");
                 let mut batch = WriteBatch::new();
-                let iter = self.memtable.iter();
+                let iter = (*self.memtable.get()).iter();
                 let mut count = 0;
                 for (k, v) in iter {
                     //let _k_bytes:&mut [u8] = &mut [0u8; 4];
@@ -213,13 +222,16 @@ impl Db {
             }
             
             // clean up old memtable
-            self.memtable.clear();
+            unsafe {
+                (*self.memtable.get()).clear();
+            }
         }
         
     }
     
     fn print_stats(&self){
-        info!("memtable records: eden: {}, old: {}", self.memtable_eden.len(), self.memtable.len());
+        let old_count = unsafe { (*self.memtable.get()).len() };
+        info!("memtable records: eden: {}, old: {}", self.memtable_eden.len(), old_count);
     }
 }
 
