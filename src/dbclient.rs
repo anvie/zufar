@@ -60,12 +60,15 @@ impl RetryPolicy for BackoffRetryPolicy {
 
 type DbcResult = Result<String,&'static str>;
 
+
 #[derive(Debug)]
 pub struct DbClient<T> where T:RetryPolicy {
     address: String,
     stream: RefCell<Option<TcpStream>>,
     retry_policy: T
 }
+
+
 
 impl<T> DbClient<T> where T:RetryPolicy {
     
@@ -269,7 +272,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
                     //     None
                     // },
                     Ok(d) => {
-                        let s:Vec<&str> = d.split("\n").collect();
+                        let s:Vec<&str> = d.split("\r\n").collect();
                         Some(s[1].to_string())
                     },
                     Err(e) => {
@@ -333,9 +336,21 @@ impl<T> Drop for DbClient<T> where T:RetryPolicy {
 mod tests {
     
     use super::DbClient;
+    use super::BackoffRetryPolicy;
+    use super::RetryPolicy;
     
-    fn get_db() -> DbClient {
-        DbClient::new(&"127.0.0.1:8122".to_string())
+    trait DbClientDefaultBRP {
+        fn get_backoff(&mut self, key:&str) -> Option<String>;
+    }
+    
+    impl DbClientDefaultBRP for DbClient<BackoffRetryPolicy> {
+        fn get_backoff(&mut self, key:&str) -> Option<String> {
+            self.get(key, &mut BackoffRetryPolicy::new())
+        }
+    }
+    
+    fn get_db() -> DbClient<BackoffRetryPolicy> {
+        DbClient::new(&"127.0.0.1:8122".to_string(), BackoffRetryPolicy::new())
     }
     
     #[test]
@@ -345,12 +360,12 @@ mod tests {
         dbc.set("name", "Zufar");
         dbc.set("something", "In the way");
         dbc.set("article", "This is very long-long text we tried so far");
-        assert_eq!(dbc.get_raw("name"), Ok("VALUE name 1 5\nZufar\nEND\n".to_string()));
-        assert_eq!(dbc.get_raw("no_name"), Err("???"));
-        assert_eq!(dbc.get("name"), Some("Zufar".to_string()));
-        assert_eq!(dbc.get("none"), None);
-        assert_eq!(dbc.get("something"), Some("In the way".to_string()));
-        assert_eq!(dbc.get("article"), Some("This is very long-long text we tried so far".to_string()));
+        assert_eq!(dbc.get_raw("name", &mut BackoffRetryPolicy::new()), Ok("VALUE name 0 5 \r\nZufar\r\nEND\r\n".to_string()));
+        assert_eq!(dbc.get_raw("no_name", &mut BackoffRetryPolicy::new()), Ok("END\r\n".to_string()));
+        assert_eq!(dbc.get_backoff("name"), Some("Zufar".to_string()));
+        assert_eq!(dbc.get_backoff(""), Some("".to_string())); // @FIXME
+        assert_eq!(dbc.get_backoff("something"), Some("In the way".to_string()));
+        assert_eq!(dbc.get_backoff("article"), Some("This is very long-long text we tried so far".to_string()));
     }
 
 }

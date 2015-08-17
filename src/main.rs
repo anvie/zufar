@@ -143,14 +143,14 @@ fn main() {
         }
     }
     
-    // check for existing data dir
-    let path = Path::new(&data_dir);
-    if !path.exists(){
-        info!("data dir `{}` not exists, create first.", &data_dir);
-        fs::create_dir_all(path).unwrap_or_else(|why| {
-            panic!("{}", why);
-        });
-    }
+    // // check for existing data dir
+    // let path = Path::new(&data_dir);
+    // if !path.exists(){
+    //     info!("data dir `{}` not exists, create first.", &data_dir);
+    //     fs::create_dir_all(path).unwrap_or_else(|why| {
+    //         panic!("{}", why);
+    //     });
+    // }
     
     let info = Arc::new(Mutex::new(cluster::Info::new(&node_address, 
         &api_address, seeds,

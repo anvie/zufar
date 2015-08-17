@@ -5,11 +5,14 @@ use std::collections::BTreeMap;
 
 use std::io::prelude::*;
 use std::io::{BufWriter, BufReader, SeekFrom};
+use std::fs;
 use std::fs::File;
 use std::path::Path;
+
 use std::fs::OpenOptions;
 use std::cell::{RefCell, RefMut, UnsafeCell};
 use std::rc::Rc;
+
 
 use time;
 
@@ -31,9 +34,22 @@ pub struct Db {
 impl Db {
     pub fn new(data_dir:&str) -> Db {
         
+        {
+            // check for existing data dir
+            let path = Path::new(&data_dir);
+            if !path.exists(){
+                info!("data dir `{}` not exists, create first.", &data_dir);
+                fs::create_dir_all(path).unwrap_or_else(|why| {
+                    panic!("{}", why);
+                });
+            }
+            
+        }
+        
         let data_path = format!("{}/commitlog.txt", data_dir);
         //let file_name = Box::new(data_path);
         let path = Path::new(&*data_path);
+        
         
         let mut _memtable = BTreeMap::new();
         {
@@ -238,10 +254,19 @@ mod tests {
     //use crc32::Crc32;
     use super::test::Bencher;
     use rand::random;
+    use time;
+    
+    fn rand_string(count:usize) -> String {
+        (0..count).map(|_| (0x30u8 + (random::<f32>() * 96.0) as u8) as char).collect()
+    }
+    
+    fn test_path() -> String {
+        format!("/tmp/zufar_test/test-{}", rand_string(10))
+    }
     
     #[test]
     fn test_insert(){
-        let mut db = Db::new();
+        let mut db = Db::new(&*test_path());
         db.insert(b"name", b"robin");
         
         assert_eq!(db.get(b"name"), Some(&b"robin"[..]));
@@ -256,20 +281,17 @@ mod tests {
     
     #[test]
     fn test_delete(){
-        let mut db = Db::new();
+        let mut db = Db::new(&*test_path());
         db.insert(b"name", b"Zufar");
         assert_eq!(db.get(b"name"), Some(&b"Zufar"[..]));
         db.del(b"name");
         assert_eq!(db.get(b"name"), None);
     }
     
-    fn rand_string(count:usize) -> String {
-        (0..count).map(|_| (0x20u8 + (random::<f32>() * 96.0) as u8) as char).collect()
-    }
-    
+
     #[bench]
     fn bench_insert(b: &mut Bencher){
-        let mut db = Db::new();
+        let mut db = Db::new(&*test_path());
         b.iter(|| {
             let k = format!("k-{}", rand_string(10));
             let v = format!("v-{}", rand_string(20));
@@ -280,7 +302,7 @@ mod tests {
     
     #[bench]
     fn bench_read(b: &mut Bencher){
-        let mut db = Db::new();
+        let mut db = Db::new(&*test_path());
         b.iter(|| {
             let k = format!("k-{}", rand_string(10));
             //let v = format!("v-{}", rand_string(20));
@@ -291,7 +313,7 @@ mod tests {
     
     #[bench]
     fn bench_delete(b: &mut Bencher){
-        let mut db = Db::new();
+        let mut db = Db::new(&*test_path());
         b.iter(|| {
             let k = format!("k-{}", rand_string(10));
             db.del(k.as_bytes());
