@@ -101,29 +101,29 @@ impl<T> DbClient<T> where T:RetryPolicy {
         }
     }
     
-    fn reconnect<'a>(&'a mut self, s:&'a mut RefMut<'a, Option<TcpStream>>){
-        let addr:SocketAddr = self.address.parse().unwrap();
-        match TcpStream::connect(addr){
-            Ok(stream) => {
-
-                let _ = stream.set_read_timeout(Some(Duration::new(5, 0)));
-                
-                // clean up welcome message
-                //let _ = stream.read(&mut [0u8; 128]);
-                trace!("before borrow");
-                //let mut s = self.stream.borrow_mut();
-                trace!("after borrow, to write.");
-                **s = Some(stream);
-                trace!("after write");
-             
-                // Ok(0)
-            },
-            Err(e) => {
-                error!("cannot connect to {}, {}", &self.address, e);
-                // Err("cannot connect")
-            }
-        }
-    }
+    // fn reconnect<'a>(&'a mut self, s:&'a mut RefMut<'a, Option<TcpStream>>){
+    //     let addr:SocketAddr = self.address.parse().unwrap();
+    //     match TcpStream::connect(addr){
+    //         Ok(stream) => {
+    // 
+    //             let _ = stream.set_read_timeout(Some(Duration::new(5, 0)));
+    //             
+    //             // clean up welcome message
+    //             //let _ = stream.read(&mut [0u8; 128]);
+    //             //trace!("before borrow");
+    //             //let mut s = self.stream.borrow_mut();
+    //             //trace!("after borrow, to write.");
+    //             **s = Some(stream);
+    //             //trace!("after write");
+    //          
+    //             // Ok(0)
+    //         },
+    //         Err(e) => {
+    //             error!("cannot connect to {}, {}", &self.address, e);
+    //             // Err("cannot connect")
+    //         }
+    //     }
+    // }
     
     // fn get_retry_policy<R : RetryPolicy>(&self) -> R {
         // match self.retry_policy {
@@ -207,6 +207,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
                     
                     self.get_raw(key, rp)
                 }else{
+                    warn!("give up!");
                     result
                 }
             }else{
