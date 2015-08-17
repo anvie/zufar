@@ -125,12 +125,12 @@ impl<T> DbClient<T> where T:RetryPolicy {
         }
     }
     
-    // fn get_retry_policy(&self) -> T {
-    //     match self.retry_policy {
-    //         RetryPolicyType::Backoff => {
-    //             BackoffRetryPolicy::new()
-    //         }
-    //     }
+    // fn get_retry_policy<R : RetryPolicy>(&self) -> R {
+        // match self.retry_policy {
+            // RetryPolicyType::Backoff => {
+                // BackoffRetryPolicy::new()
+            // }
+        // }
     // }
     
     pub fn set(&mut self, key:&str, v:&str){

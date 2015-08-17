@@ -49,16 +49,18 @@ pub struct Info {
     pub my_api_address: String,
     pub routing_tables: Vec<RoutingTable>,
     pub seeds:Vec<String>,
+    pub data_dir:String
 }
 
 impl Info {
-    pub fn new(node_address:&String, api_address:&String, seeds:Vec<String>) -> Info {
+    pub fn new(node_address:&String, api_address:&String, seeds:Vec<String>, data_dir:&String) -> Info {
         Info {
             my_guid: 0u32,
             my_node_address: node_address.clone(),
             my_api_address: api_address.clone(),
             routing_tables: Vec::new(),
-            seeds: seeds
+            seeds: seeds,
+            data_dir: data_dir.clone()
         }
     }
     

@@ -8,23 +8,32 @@ use std::io::{BufWriter, BufReader};
 use std::fs::File;
 use std::path::Path;
 use std::fs::OpenOptions;
+use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
+
 use time;
 
 use crc32::Crc32;
+use rocksdb::{RocksDB, Writable, WriteBatch, RocksDBResult};
+use byteorder::ByteOrder;
+use byteorder::{LittleEndian, WriteBytesExt};
 
 
 pub struct Db {
     memtable_eden: BTreeMap<u32, Vec<u8>>,
     memtable: BTreeMap<u32, Vec<u8>>,
     fstore: File,
-    crc32: Crc32
+    crc32: Crc32,
+    rocksdb: RocksDB,
+    _flush_counter: u16
 }
 
 impl Db {
-    pub fn new() -> Db {
+    pub fn new(data_dir:&str) -> Db {
         
-        let file_name = Box::new("commitlog.txt");
-        let path = Path::new(*file_name);
+        let data_path = format!("{}/commitlog.txt", data_dir);
+        //let file_name = Box::new(data_path);
+        let path = Path::new(&*data_path);
         
         let mut _memtable = BTreeMap::new();
         {
@@ -60,11 +69,19 @@ impl Db {
                         Err(e) => panic!("cannot open commitlog.txt. {}", e)
                     };
         
+        // initialize rocksdb
+        let rocksdb = {
+            let data_path = format!("{}/rocks", data_dir);
+            RocksDB::open_default(&*data_path).unwrap()
+        };
+        
         Db {
             memtable_eden: BTreeMap::new(),
             memtable: _memtable,
             fstore: file,
-            crc32: Crc32::new()
+            crc32: Crc32::new(),
+            rocksdb: rocksdb,
+            _flush_counter: 0u16
         }
     }
     
@@ -74,21 +91,59 @@ impl Db {
         //self.flush();
     }
     
-    pub fn get(&mut self, k:&[u8]) -> Option<&[u8]> {
-        //let mut crc32 = Crc32::new();
-        let rv = self.memtable.get(&self.crc32.crc(k)).map(|d| d.as_ref());
-        if rv.is_some(){
-            rv
-        }else{
-            // try search in eden 
-            self.memtable_eden.get(&self.crc32.crc(k)).map(|d| d.as_ref())
-        }
+    pub fn get<'a>(&'a mut self, k:&[u8]) -> Option<&'a [u8]> {
+        
+        // let _self = Rc::new(RefCell::new(self));
+        
+        // let _self = _self.borrow();
+        let key_hashed = self.crc32.crc(k);
+        
+        let rv:Option<&[u8]> = {
+            // let mt = &mut self.memtable;
+            let _rv = self.memtable.get(&key_hashed).map(|d| d.as_ref());
+            if _rv.is_some(){
+                _rv
+            }else{
+                // try search in eden 
+                self.memtable_eden.get(&key_hashed).map(|d| d.as_ref())
+            }
+        };
+        
+        
+        // {
+        //     if rv.is_some(){
+        //         rv
+        //     }else{
+        //         // try search in rocks
+        //         // let mt = &mut self.memtable;
+        //         let mut wtr = Vec::with_capacity(4);
+        //         wtr.write_u32::<LittleEndian>(key_hashed).unwrap();
+        //         match self.rocksdb.get(&*wtr){//.map(|d| d.as_ref()){
+        //             RocksDBResult::Some(x) => {
+        //                 //self.insert(k, &*x);
+        //                 //self.get(k)
+        //                 self.memtable.insert(key_hashed, (&*x).to_vec());
+        //                 self.memtable.get(&key_hashed).map(|d| d.as_ref())
+        //                 // Some(&*x)
+        //             },
+        //             _ => None
+        //         }
+        //         // if rv.is_some(){
+        //         //     Some(rv.unwrap())
+        //         // }else{
+        //         //     None
+        //         // }
+        //     }
+        // }
+        
+        rv
     }
     
     pub fn del(&mut self, key:&[u8]) -> usize {
         let hash_key = self.crc32.crc(key);
         if self.memtable_eden.remove(&hash_key).is_none(){
            if self.memtable.remove(&hash_key).is_none(){
+               
                return 0;
            }
         }
@@ -118,6 +173,8 @@ impl Db {
         let _ = self.fstore.flush();
         let _ = self.fstore.sync_all();
         
+        
+        
         // move flushed data
         let mut count = 0;
         
@@ -129,16 +186,35 @@ impl Db {
             }
         }
         
-        // let mut count = 0;
-        // for key in &to_remove {
-        //     // remove from eden
-        //     self.memtable_eden.remove(key);
-        //     count = count + 1;
-        // }
+
         self.memtable_eden.clear();
         
         info!("flushed {} item(s)", count);
         self.print_stats();
+        
+        self._flush_counter = self._flush_counter + 1;
+        
+        if self._flush_counter > 5 {
+            {
+                info!("flusing to rocks...");
+                let mut batch = WriteBatch::new();
+                let iter = self.memtable.iter();
+                let mut count = 0;
+                for (k, v) in iter {
+                    //let _k_bytes:&mut [u8] = &mut [0u8; 4];
+                    let mut wtr = Vec::with_capacity(4); //vec![];
+                    // ByteOrder::write_u32::<LittleEndian>(_k_bytes, *k);
+                    wtr.write_u32::<LittleEndian>(*k).unwrap();
+                    batch.put(&*wtr, v);
+                    count = count + 1;
+                }
+                self.rocksdb.write(batch);
+                info!("{} records flushed into rocks.", count);
+            }
+            
+            // clean up old memtable
+            self.memtable.clear();
+        }
         
     }
     

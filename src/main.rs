@@ -17,7 +17,8 @@ extern crate byteorder;
 extern crate env_logger;
 extern crate rand;
 extern crate time;
-extern crate nix;
+//extern crate nix;
+extern crate rocksdb;
 
 use std::net::TcpListener;
 use std::thread;
@@ -28,10 +29,12 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::net::{TcpStream, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::process;
+use std::path::Path;
+use std::fs;
 
 use docopt::Docopt;
 use toml::Value;
-use nix::sys::signal;
+//use nix::sys::signal;
 
 #[macro_use] mod util;
 mod encd;
@@ -72,7 +75,7 @@ fn main() {
     
 
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
-    println!("{:?}", args);
+    //println!("{:?}", args);
 
     if (&args).flag_version{
         println!("version 0.1.0");
@@ -82,6 +85,7 @@ fn main() {
     let mut api_address = format!("{}:{}", args.arg_host, args.arg_port.unwrap_or(9123));
     let mut node_address:String = String::new();
     let mut seeds:Vec<String> = Vec::new();
+    let mut data_dir:String = "data/node0".to_string();
 
     if (&args.arg_configfile).len() > 0 {
         match File::open(&args.arg_configfile) {
@@ -92,7 +96,7 @@ fn main() {
                 //println!("cfg content: {}", s);
 
                 let cfg = toml::Parser::new(&*s).parse().unwrap();
-                println!("cfg: {:?}", cfg);
+                //println!("cfg: {:?}", cfg);
 
                 match cfg.get("zufar"){
                     Some(&Value::Table(ref section)) => {
@@ -121,6 +125,12 @@ fn main() {
                             },
                             _ => err!(5, "No `seeds` in configuration.")
                         }
+                        match section.get("data_dir"){
+                            Some(&Value::String(ref _data_dir)) => {
+                                data_dir = _data_dir.clone()
+                            },
+                            _ => err!(2, "No `data_dir` in configuration.")
+                        }
 
                     },
                     _ => err!(3, "No [zufar] section")
@@ -133,7 +143,18 @@ fn main() {
         }
     }
     
-    let info = Arc::new(Mutex::new(cluster::Info::new(&node_address, &api_address, seeds)));
+    // check for existing data dir
+    let path = Path::new(&data_dir);
+    if !path.exists(){
+        info!("data dir `{}` not exists, create first.", &data_dir);
+        fs::create_dir_all(path).unwrap_or_else(|why| {
+            panic!("{}", why);
+        });
+    }
+    
+    let info = Arc::new(Mutex::new(cluster::Info::new(&node_address, 
+        &api_address, seeds,
+        &data_dir)));
 
     let inode = InternodeService::new(info.clone());
 

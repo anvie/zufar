@@ -11,7 +11,7 @@ use std::net::Shutdown;
 use std::collections::HashMap;
 use std::net::TcpListener;
 
-use nix::sys::signal;
+//use nix::sys::signal;
 
 
 use internode::{MeState, InternodeService};
@@ -46,9 +46,15 @@ impl ApiService {
         //let db = Db::new();
 
         // global_db = Some(db);
+        
+        let data_dir = {
+            let info = info.clone();
+            let info = info.lock().unwrap();
+            info.data_dir.clone()
+        };
 
         ApiService {
-            db: Db::new(),
+            db: Db::new(&data_dir),
             //rx: rx,
             //rts_count: 0,
             me_state: RefCell::new(None),
@@ -67,7 +73,7 @@ impl ApiService {
             let api_service = api_service.clone();
             thread::spawn(move || {
                 loop {
-                    thread::sleep_ms(5000);
+                    thread::sleep_ms(10000);
                     {
                         let mut api_service = api_service.lock().unwrap();
                         debug!("flushing...");
@@ -273,14 +279,14 @@ impl ApiService {
 
                 let ts = time::now().to_timespec();
 
-                let ms = (ts.sec * 1000) + (ts.nsec / 1_000_000) as i64;
+                let ms1 = (ts.sec as f32 * 1000.0f32) + (ts.nsec as f32 / 1_000_000f32) as f32;
                 
                 self.op_get(key, stream, my_guid, rts_count);
                 
                 let ts2 = time::now().to_timespec();
                 let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
                 
-                let ms = (ms2 as f32 - ms as f32) as f32;
+                let ms = (ms2 as f32 - ms1 as f32) as f32;
                 
                 let target_node_id = self.calculate_route(key, rts_count); 
                 
