@@ -102,7 +102,7 @@ impl Db {
             rv
         }else{
             // try search in eden 
-            let rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref()).clone();
+            let rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref());
             
             if rv.is_some(){
                 rv
