@@ -461,10 +461,10 @@ impl ApiService {
     }
     
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
-        trace!("get rt");
+        //trace!("get rt");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
-        trace!("after get rt");
+        //trace!("after get rt");
         match rts.iter().find(|&r| r.guid() == guid){
             Some(rt) => Some(rt.clone()),
             None => None
