@@ -431,7 +431,7 @@ impl ApiService {
                     
                     match self.get_db_client(source_node_id, rt.api_address()){
                         Some(dbc) => {
-                            match dbc.get_raw(key){
+                            match dbc.get_raw(key, &mut BackoffRetryPolicy::new()){
                                 Ok(result) => {
                                     let _ = stream.write(result.as_bytes());
                                     //let _ = stream.flush();

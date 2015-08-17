@@ -150,7 +150,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
         }
     }
     
-    pub fn get_raw(&mut self, key:&str) -> Result<String,&str> {
+    pub fn get_raw(&mut self, key:&str, rp:&mut T) -> Result<String,&str> {
         // let s = self.stream.borrow_mut();
         
         // if s.is_some() {
@@ -198,14 +198,17 @@ impl<T> DbClient<T> where T:RetryPolicy {
             };
             
             if result.is_err() {
-                if self.retry_policy.should_retry(){
-                    warn!("retrying... ({})", self.retry_policy.tried());
+                //let rp = self.retry_policy.clone();
+                if rp.should_retry(){
+                    warn!("retrying... ({})", rp.tried());
                     self.connect();
                     
-                    thread::sleep_ms(self.retry_policy.delay());
+                    thread::sleep_ms(rp.delay());
+                    
+                    self.get_raw(key, rp)
+                }else{
+                    result
                 }
-                
-                self.get_raw(key)
             }else{
                 result
             }
@@ -249,7 +252,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
     //     result
     // }
     
-    pub fn get(&mut self, key:&str) -> Option<String> {
+    pub fn get(&mut self, key:&str, rp:&mut T) -> Option<String> {
         
         // let mut done = false;
         // let mut result:Option<String> = None;
@@ -259,7 +262,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
         // while !done {
         //     //let raw_data = self.get_raw(key);
         //     result = 
-                match self.get_raw(key) {
+                match self.get_raw(key, rp) {
                     // Ok() => {
                     //     warn!("return zero");
                     //     None
