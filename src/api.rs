@@ -9,16 +9,20 @@ use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 use std::net::Shutdown;
 use std::collections::HashMap;
+use std::net::TcpListener;
+
 
 use internode::{MeState, InternodeService};
 use dbclient::DbClient;
-use std::net::TcpListener;
+use dbclient::{RetryPolicy, BackoffRetryPolicy};
 use cluster;
 use cluster::RoutingTable;
 
 
 static END:&'static [u8] = b"END\r\n";
 static ERROR:&'static [u8] = b"ERROR\r\n";
+
+
 
 pub struct ApiService {
     db: Db,
@@ -28,7 +32,7 @@ pub struct ApiService {
     crc32: Crc32,
     inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
-    db_client_cache: HashMap<u32, DbClient>
+    db_client_cache: HashMap<u32, DbClient<BackoffRetryPolicy>>
 }
 
 impl ApiService {
@@ -279,14 +283,15 @@ impl ApiService {
         }
     }
     
-    fn get_db_client<'a>(&'a mut self, node_id:u32, address:&String) -> Option<&'a mut DbClient> {
+    fn get_db_client<'a>(&'a mut self, node_id:u32, address:&String) -> Option<&'a mut DbClient<BackoffRetryPolicy>> {
         if self.db_client_cache.contains_key(&node_id) {
             trace!("get db client for {} from cache", address);
             self.db_client_cache.get_mut(&node_id)
         }else{
             trace!("get db client for {} miss from cache, build it.", address);
             {
-                let dbc = DbClient::new(&address);
+                let rp = BackoffRetryPolicy::new();
+                let dbc = DbClient::new(&address, rp);
                 dbc.connect();
                 self.db_client_cache.insert(node_id, dbc);
             }
@@ -317,7 +322,7 @@ impl ApiService {
                     
                     trace!("trying to delete data from: {:?}", rt);
                     
-                    let mut dbc = DbClient::new(&rt.api_address());
+                    let mut dbc = DbClient::new(&rt.api_address(), BackoffRetryPolicy::new());
                     match dbc.connect(){
                         Err(_) => panic!("cannot contact node-{}", target_node_id),
                         _ => (),
