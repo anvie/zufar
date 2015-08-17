@@ -200,7 +200,7 @@ impl Db {
         if self._flush_counter > 5 {
             self._flush_counter = 0;
             unsafe {
-                info!("flusing to rocks...");
+                info!("flushing to rocks...");
                 let mut batch = WriteBatch::new();
                 let iter = (*self.memtable.get()).iter();
                 let mut count = 0;
