@@ -62,6 +62,22 @@ impl ApiService {
     pub fn start(self, api_address:&String){
         
         let api_service = Arc::new(Mutex::new(self));
+        
+        {
+            let api_service = api_service.clone();
+            thread::spawn(move || {
+                loop {
+                    thread::sleep_ms(5000);
+                    {
+                        let mut api_service = api_service.lock().unwrap();
+                        debug!("flushing...");
+                        api_service.db.flush();
+                    }
+                }
+            });
+        }
+        
+        
 
         let listener = TcpListener::bind(&**api_address).unwrap();
         println!("client comm listening at {} ...", api_address);
