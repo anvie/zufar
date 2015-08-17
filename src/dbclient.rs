@@ -52,6 +52,28 @@ impl RetryPolicy for BackoffRetryPolicy {
     }
 }
 
+
+pub struct NoRetry;
+
+
+impl RetryPolicy for NoRetry {
+    fn new() -> NoRetry {
+        NoRetry
+    }
+    fn should_retry(&mut self) -> bool {
+        false
+    }
+    fn delay(&self) -> u32 {
+        0u32
+    }
+    fn tried(&self) -> u16 {
+        0
+    }
+    fn reset(&mut self){
+        
+    }
+}
+
 // #[derive(Debug)]
 // enum RetryPolicyType {
 //     Backoff
@@ -267,10 +289,9 @@ impl<T> DbClient<T> where T:RetryPolicy {
         //     //let raw_data = self.get_raw(key);
         //     result = 
                 match self.get_raw(key, rp) {
-                    // Ok() => {
-                    //     warn!("return zero");
-                    //     None
-                    // },
+                    Ok(ref d) if d == "END\r\n" => {
+                        None
+                    },
                     Ok(d) => {
                         let s:Vec<&str> = d.split("\r\n").collect();
                         Some(s[1].to_string())
@@ -336,21 +357,22 @@ impl<T> Drop for DbClient<T> where T:RetryPolicy {
 mod tests {
     
     use super::DbClient;
-    use super::BackoffRetryPolicy;
+    //use super::BackoffRetryPolicy;
     use super::RetryPolicy;
+    use super::NoRetry;
     
-    trait DbClientDefaultBRP {
-        fn get_backoff(&mut self, key:&str) -> Option<String>;
+    trait DbClientNoRetry {
+        fn get_nop(&mut self, key:&str) -> Option<String>;
     }
     
-    impl DbClientDefaultBRP for DbClient<BackoffRetryPolicy> {
-        fn get_backoff(&mut self, key:&str) -> Option<String> {
-            self.get(key, &mut BackoffRetryPolicy::new())
+    impl DbClientNoRetry for DbClient<NoRetry> {
+        fn get_nop(&mut self, key:&str) -> Option<String> {
+            self.get(key, &mut NoRetry::new())
         }
     }
     
-    fn get_db() -> DbClient<BackoffRetryPolicy> {
-        DbClient::new(&"127.0.0.1:8122".to_string(), BackoffRetryPolicy::new())
+    fn get_db() -> DbClient<NoRetry> {
+        DbClient::new(&"127.0.0.1:8122".to_string(), NoRetry::new())
     }
     
     #[test]
@@ -360,12 +382,12 @@ mod tests {
         dbc.set("name", "Zufar");
         dbc.set("something", "In the way");
         dbc.set("article", "This is very long-long text we tried so far");
-        assert_eq!(dbc.get_raw("name", &mut BackoffRetryPolicy::new()), Ok("VALUE name 0 5 \r\nZufar\r\nEND\r\n".to_string()));
-        assert_eq!(dbc.get_raw("no_name", &mut BackoffRetryPolicy::new()), Ok("END\r\n".to_string()));
-        assert_eq!(dbc.get_backoff("name"), Some("Zufar".to_string()));
-        assert_eq!(dbc.get_backoff(""), Some("".to_string())); // @FIXME
-        assert_eq!(dbc.get_backoff("something"), Some("In the way".to_string()));
-        assert_eq!(dbc.get_backoff("article"), Some("This is very long-long text we tried so far".to_string()));
+        assert_eq!(dbc.get_raw("name", &mut NoRetry::new()), Ok("VALUE name 0 5 \r\nZufar\r\nEND\r\n".to_string()));
+        assert_eq!(dbc.get_raw("no_name", &mut NoRetry::new()), Ok("END\r\n".to_string()));
+        assert_eq!(dbc.get_nop("name"), Some("Zufar".to_string()));
+        assert_eq!(dbc.get_nop(""), None);
+        assert_eq!(dbc.get_nop("something"), Some("In the way".to_string()));
+        assert_eq!(dbc.get_nop("article"), Some("This is very long-long text we tried so far".to_string()));
     }
 
 }

@@ -260,6 +260,8 @@ impl ApiService {
             &"get" => {
                 
                 if s.len() != 2 {
+                    warn!("bad parameter length");
+                    let _ = stream.write(END);
                     return Err("bad parameter length");
                 }
                 
@@ -272,6 +274,8 @@ impl ApiService {
             &"getd" => {
                 
                 if s.len() != 2 {
+                    warn!("bad parameter length");
+                    let _ = stream.write(END);
                     return Err("bad parameter length");
                 }
                 
