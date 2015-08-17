@@ -103,7 +103,10 @@ impl DbClient {
                     error!("cannot read from stream. {}", e.description());
                     Err("")
                 },
-                _ => Ok("".to_string())
+                x => { 
+                    error!("unexpected return: {:?}", x);
+                    Err("cannot read from remote node")
+                }
             }
             
         }else{

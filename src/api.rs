@@ -8,6 +8,7 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 use std::net::Shutdown;
+use std::collections::HashMap;
 
 use internode::{MeState, InternodeService};
 use dbclient::DbClient;
@@ -17,6 +18,7 @@ use cluster::RoutingTable;
 
 
 static END:&'static [u8] = b"END\r\n";
+static ERROR:&'static [u8] = b"ERROR\r\n";
 
 pub struct ApiService {
     db: Db,
@@ -25,7 +27,8 @@ pub struct ApiService {
     pub me_state: RefCell<Option<MeState>>,
     crc32: Crc32,
     inode: Arc<Mutex<InternodeService>>,
-    info: Arc<Mutex<cluster::Info>>
+    info: Arc<Mutex<cluster::Info>>,
+    db_client_cache: HashMap<u32, DbClient>
 }
 
 impl ApiService {
@@ -37,7 +40,8 @@ impl ApiService {
             me_state: RefCell::new(None),
             crc32: Crc32::new(),
             inode: inode,
-            info: info
+            info: info,
+            db_client_cache: HashMap::new()
         }
     }
     
@@ -178,6 +182,8 @@ impl ApiService {
                         debug!("data to store: k: `{}`, v: `{:?}`", key, data);
                         
                         self.db.insert(key.as_bytes(), data.as_bytes());
+                        
+                        let _ = stream.write(b"STORED\r\n");
                     }else{
                         // on other node
                         
@@ -185,13 +191,23 @@ impl ApiService {
                         
                         //let inode = self.inode.lock().unwrap();
                         let rt = self.get_rt_by_guid(target_node_id).unwrap();
-                        let mut dbc = DbClient::new(&rt.api_address());
-                        dbc.connect();
-                        dbc.set(key, &*data_str);
+                        //let mut dbc = DbClient::new(&rt.api_address());
+                        match self.get_db_client(target_node_id, rt.api_address()){
+                            Some(dbc) => {
+                                dbc.set(key, &*data_str);
+                                let _ = stream.write(b"STORED\r\n");
+                            },
+                            None => {
+                                error!("cannot get db_client with guid {} - {}", target_node_id, rt.api_address());
+                                let _ = stream.write(ERROR);
+                            }
+                        }
+                        //dbc.connect();
+                        
                     }
                     
                     
-                    let _ = stream.write(b"STORED\r\n");
+                    
                 }
 
                 Ok(0)
@@ -223,14 +239,14 @@ impl ApiService {
                 self.op_get(key, stream, my_guid, rts_count);
                 
                 let ts2 = time::now().to_timespec();
-                let ms2 = (ts2.sec * 1000) + (ts2.nsec / 1_000_000) as i64;
+                let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
                 
-                let ms = (ms2 - ms);
+                let ms = (ms2 as f32 - ms as f32) as f32;
                 
                 let target_node_id = self.calculate_route(key, rts_count); 
                 
-                stream.write(format!("from node-{}\r\n", target_node_id).as_bytes());
-                stream.write(format!("in {}ms\r\n", ms).as_bytes());
+                let _ = stream.write(format!("from node-{}\r\n", target_node_id).as_bytes());
+                let _ = stream.write(format!("in {}ms\r\n", ms).as_bytes());
                 info!("get record done in {}ms", ms);
 
                 Ok(0)
@@ -260,6 +276,21 @@ impl ApiService {
                 Ok(0)
             }
             _ => Ok(1)
+        }
+    }
+    
+    fn get_db_client<'a>(&'a mut self, node_id:u32, address:&String) -> Option<&'a mut DbClient> {
+        if self.db_client_cache.contains_key(&node_id) {
+            trace!("get db client for {} from cache", address);
+            self.db_client_cache.get_mut(&node_id)
+        }else{
+            trace!("get db client for {} miss from cache, build it.", address);
+            {
+                let dbc = DbClient::new(&address);
+                dbc.connect();
+                self.db_client_cache.insert(node_id, dbc);
+            }
+            self.db_client_cache.get_mut(&node_id)
         }
     }
     
@@ -298,7 +329,7 @@ impl ApiService {
                         },
                         Err(e) => {
                             warn!("cannot delete data from node-{}. {}", target_node_id, e);
-                            let _ = stream.write(b"ERROR\r\n");
+                            let _ = stream.write(ERROR);
                         }
                     }
                 },
@@ -348,29 +379,29 @@ impl ApiService {
         }else{
             trace!("get from other node with guid {}", source_node_id);
             
-            // let data = "VALUE 0 0 1 \r\n2\r\nEND\r\n";
-            // trace!("data: {}", data);
-            // stream.write(data.as_bytes()).unwrap();
-            // stream.flush().unwrap();
-            // return;
-            
+
             match self.get_rt_by_guid(source_node_id){
                 Some(rt) => {
                     
-                    let mut dbc = DbClient::new(&rt.api_address());
-                    trace!("connecting...");
-                    dbc.connect();
-                    trace!("get raw");
-                    match dbc.get_raw(key){
-                        Ok(result) => {
-                            let _ = stream.write(result.as_bytes());
-                            //let _ = stream.flush();
+                    match self.get_db_client(source_node_id, rt.api_address()){
+                        Some(dbc) => {
+                            match dbc.get_raw(key){
+                                Ok(result) => {
+                                    let _ = stream.write(result.as_bytes());
+                                    //let _ = stream.flush();
+                                },
+                                Err(e) => {
+                                    warn!("cannot get data from node-{}. {}", source_node_id, e);
+                                    let _ = stream.write(END);
+                                }
+                            }
                         },
-                        Err(e) => {
-                            warn!("cannot get data from node-{}. {}", source_node_id, e);
-                            let _ = stream.write(END);
+                        None => {
+                            error!("cannot get db_client with guid {} - {}", source_node_id, rt.api_address());
+                            let _ = stream.write(ERROR);
                         }
                     }
+                    
                 },
                 None => {
                     let err_str = format!("cannot contact node-{}", source_node_id);
