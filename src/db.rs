@@ -29,7 +29,8 @@ pub struct Db {
     fstore: File,
     crc32: Crc32,
     rocksdb: RocksDB,
-    _flush_counter: u16
+    _flush_counter: u16,
+    _commitlog_file_path: String,
 }
 
 impl Db {
@@ -47,9 +48,9 @@ impl Db {
 
         }
 
-        let data_path = format!("{}/commitlog.txt", data_dir);
+        let commitlog_path = format!("{}/commitlog.txt", data_dir);
         //let file_name = Box::new(data_path);
-        let path = Path::new(&*data_path);
+        let path = Path::new(&*commitlog_path);
 
 
         let mut _memtable = BTreeMap::new();
@@ -62,9 +63,15 @@ impl Db {
                 let ts = time::now().to_timespec().sec;
 
                 let mut file = BufReader::new(File::open(&path).unwrap());
+                let mut count = 0;
                 for line in file.lines().filter_map(|result| result.ok()) {
+                    count = count + 1;
                     let s:Vec<&str> = line.split("|").collect();
                     let version = s[0];
+                    if s.len() != 4 {
+                        warn!("corrupted commitlog, rec ver 1 should be 4 column, at line: {}", count);
+                        continue;
+                    }
                     let hash_key:u32 = s[1].parse().unwrap();
                     let content = s[2..].join("|");
                     debug!("  (v{}) -> k: {}, content: {}", version, hash_key, content);
@@ -99,7 +106,8 @@ impl Db {
             fstore: file,
             crc32: Crc32::new(),
             rocksdb: rocksdb,
-            _flush_counter: 0u16
+            _flush_counter: 0u16,
+            _commitlog_file_path: commitlog_path.to_string()
         }
     }
 
@@ -123,7 +131,7 @@ impl Db {
         let rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref());
 
         if rv.is_some(){
-            trace!("got from old");
+            trace!("got from eden");
             rv
         }else{
 
@@ -132,7 +140,7 @@ impl Db {
             let rv = unsafe { (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref()) };
 
             if rv.is_some(){
-                trace!("got from eden");
+                trace!("got from old");
                 rv
             }else{
                 // try search in rocks
@@ -261,10 +269,26 @@ impl Db {
             // clean up old memtable
             unsafe {
                 (*self.memtable.get()).clear();
-                let _ = self.fstore.seek(SeekFrom::Start(0u64));
+                self.reset_commitlog();
             }
         }
 
+    }
+
+    fn reset_commitlog(&mut self){
+        trace!("reset commitlog.");
+
+        fs::remove_file(&self._commitlog_file_path);
+
+        let mut file = match OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .open(&self._commitlog_file_path){
+                        Ok(f) => f,
+                        Err(e) => panic!("cannot open {}. {}", &self._commitlog_file_path, e)
+                    };
+        self.fstore = file;
+        let _ = self.fstore.seek(SeekFrom::Start(0u64));
     }
 
     fn print_stats(&self){

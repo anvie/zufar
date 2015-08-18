@@ -302,7 +302,7 @@ impl InternodeService {
                                 match stream.read(&mut buff) {
                                     Ok(count) if count > 0 => {
                                         let data = String::from_utf8(buff).ok().unwrap();
-                                        debug!("got {}", data);
+                                        //debug!("got {}", data);
                                     },
                                     _ => to_remove.push(rt.guid())
                                 }
