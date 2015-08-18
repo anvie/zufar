@@ -41,6 +41,30 @@ pub struct ApiService {
 
 type ApiResult = Result<u16, &'static str>;
 
+
+macro_rules! op_timing {
+    ($op_str:expr, $op:expr, $target_node_id:expr, $stream:ident) => {
+        {
+            let ts = time::now().to_timespec();
+
+            let ms1 = (ts.sec as f32 * 1000.0f32) + (ts.nsec as f32 / 1_000_000f32) as f32;
+
+            let result = $op;
+
+            let ts2 = time::now().to_timespec();
+            let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
+
+            let ms = (ms2 as f32 - ms1 as f32) as f32;
+
+            let _ = $stream.write(format!("node-{} ", $target_node_id).as_bytes());
+            let _ = $stream.write(format!("in {}ms\r\n", ms).as_bytes());
+            info!("$($op_str) record done in {}ms", ms);
+
+            result
+        }
+    }
+}
+
 impl ApiService {
 
     pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {
@@ -149,44 +173,49 @@ impl ApiService {
 
                 if trace {
 
-                    let ts = time::now().to_timespec();
-
-                    let ms1 = (ts.sec as f32 * 1000.0f32) + (ts.nsec as f32 / 1_000_000f32) as f32;
-
-                    let result = self.op_set(&s, stream, my_guid, rts_count);
-
-                    let ts2 = time::now().to_timespec();
-                    let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
-
-                    let ms = (ms2 as f32 - ms1 as f32) as f32;
-
                     let key = s[1];
                     let target_node_id = self.calculate_route(key, rts_count);
 
-                    let _ = stream.write(format!("to node-{} ", target_node_id).as_bytes());
-                    let _ = stream.write(format!("in {}ms\r\n", ms).as_bytes());
-                    info!("set record done in {}ms", ms);
+                    op_timing!("set", self.op_set(&s, stream, my_guid, rts_count), target_node_id, stream)
 
-                    result
+                    // let ts = time::now().to_timespec();
+                    //
+                    // let ms1 = (ts.sec as f32 * 1000.0f32) + (ts.nsec as f32 / 1_000_000f32) as f32;
+                    //
+                    // let result = self.op_set(&s, stream, my_guid, rts_count);
+                    //
+                    // let ts2 = time::now().to_timespec();
+                    // let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
+                    //
+                    // let ms = (ms2 as f32 - ms1 as f32) as f32;
+                    //
+                    // let key = s[1];
+                    // let target_node_id = self.calculate_route(key, rts_count);
+                    //
+                    // let _ = stream.write(format!("to node-{} ", target_node_id).as_bytes());
+                    // let _ = stream.write(format!("in {}ms\r\n", ms).as_bytes());
+                    // info!("set record done in {}ms", ms);
+
+                    // result
                 }else{
                     self.op_set(&s, stream, my_guid, rts_count)
                 }
             },
-            &"get" => {
-
-                if s.len() != 2 {
-                    warn!("bad parameter length");
-                    let _ = stream.write(END);
-                    return Err("bad parameter length");
-                }
-
-                let k = s[1];
-
-                self.op_get(k, stream, my_guid, rts_count);
-
-                Ok(0)
-            },
-            &"getd" => {
+            // &"get" => {
+            //
+            //     if s.len() != 2 {
+            //         warn!("bad parameter length");
+            //         let _ = stream.write(END);
+            //         return Err("bad parameter length");
+            //     }
+            //
+            //     let k = s[1];
+            //
+            //     self.op_get(k, stream, my_guid, rts_count);
+            //
+            //     Ok(0)
+            // },
+            &"get" | &"getd" => {
 
                 if s.len() != 2 {
                     warn!("bad parameter length");
@@ -196,24 +225,33 @@ impl ApiService {
 
                 let key = s[1];
 
-                let ts = time::now().to_timespec();
-
-                let ms1 = (ts.sec as f32 * 1000.0f32) + (ts.nsec as f32 / 1_000_000f32) as f32;
-
-                self.op_get(key, stream, my_guid, rts_count);
-
-                let ts2 = time::now().to_timespec();
-                let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
-
-                let ms = (ms2 as f32 - ms1 as f32) as f32;
-
+                // let ts = time::now().to_timespec();
+                //
+                // let ms1 = (ts.sec as f32 * 1000.0f32) + (ts.nsec as f32 / 1_000_000f32) as f32;
+                //
+                // self.op_get(key, stream, my_guid, rts_count);
+                //
+                // let ts2 = time::now().to_timespec();
+                // let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
+                //
+                // let ms = (ms2 as f32 - ms1 as f32) as f32;
+                //
                 let target_node_id = self.calculate_route(key, rts_count);
+                //
+                // let _ = stream.write(format!("from node-{}\r\n", target_node_id).as_bytes());
+                // let _ = stream.write(format!("in {}ms\r\n", ms).as_bytes());
+                // info!("get record done in {}ms", ms);
+                //
+                // Ok(0)
 
-                let _ = stream.write(format!("from node-{}\r\n", target_node_id).as_bytes());
-                let _ = stream.write(format!("in {}ms\r\n", ms).as_bytes());
-                info!("get record done in {}ms", ms);
+                let trace = s[0] == "getd";
 
-                Ok(0)
+                if trace {
+                    op_timing!("get", self.op_get(key, stream, my_guid, rts_count), target_node_id, stream)
+                }else{
+                    self.op_get(key, stream, my_guid, rts_count)
+                }
+
             },
             &"delete" | &"deleted" | &"del" | &"deld" => {
 
@@ -386,7 +424,7 @@ impl ApiService {
 
     }
 
-    fn op_get(&mut self, key:&str, stream:&mut TcpStream, my_guid:u32, rts_count:usize){
+    fn op_get(&mut self, key:&str, stream:&mut TcpStream, my_guid:u32, rts_count:usize) -> ApiResult {
         // calculate route
         let source_node_id = self.calculate_route(key, rts_count);
 
@@ -454,6 +492,8 @@ impl ApiService {
             }
 
         }
+
+        Ok(0)
     }
 
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
