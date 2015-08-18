@@ -242,7 +242,7 @@ impl Db {
 
         self._flush_counter = self._flush_counter + 1;
 
-        if self._flush_counter > 5 {
+        if self._flush_counter > 10 {
             self._flush_counter = 0;
             unsafe {
                 info!("flushing to rocks...");
