@@ -118,17 +118,18 @@ impl Db {
 
         let key_hashed = self.crc32.crc(k);
 
-        trace!("check from old memtable");
-        let rv = unsafe { (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref()) };
+        // try search in eden
+        trace!("check from eden memtable");
+        let rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref());
+
         if rv.is_some(){
             trace!("got from old");
             rv
         }else{
 
-            // try search in eden
-            trace!("check from eden memtable");
-
-            let rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref());
+            // try search in old
+            trace!("check from old memtable");
+            let rv = unsafe { (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref()) };
 
             if rv.is_some(){
                 trace!("got from eden");
