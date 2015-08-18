@@ -39,7 +39,10 @@ pub struct ApiService {
 
 // static mut global_db:Option<Db> = None;
 
+type ApiResult = Result<u16, &'static str>;
+
 impl ApiService {
+
     pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {
         let data_dir = {
             let info = info.clone();
@@ -118,7 +121,7 @@ impl ApiService {
 
     }
 
-    pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8]) -> Result<u16, &'static str> {
+    pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8]) -> ApiResult {
 
         let d = String::from_utf8(data.to_vec()).ok().unwrap();
         let s:Vec<&str> = d.trim().split(" ").collect();
@@ -140,84 +143,34 @@ impl ApiService {
         trace!("rts_count: {}", rts_count);
 
         match &s[0] {
-            &"set" => {
+            &"set" | &"setd" => {
 
-                let len = s.len();
+                let trace = s[0] == "setd";
 
-                if len < 5 {
-                    return Err("`set` parameters must be greater than 5");
-                }
+                if trace {
 
-                let mut data_str =
-                if len > 5 {
-                    s[5..].join(" ").trim().to_string()
-                }else{
-                    "".to_string()
-                };
+                    let ts = time::now().to_timespec();
 
-                let key = s[1];
-                let metadata = s[2];
-                let expiration:u32 = s[3].parse().expect("invalid expiration format");
-                let length:usize = s[4].parse().expect("invalid length format");
+                    let ms1 = (ts.sec as f32 * 1000.0f32) + (ts.nsec as f32 / 1_000_000f32) as f32;
 
-                //let _ = stream.write(b">\n");
+                    let result = self.op_set(&s, stream, my_guid, rts_count);
 
-                if data_str.len() == 0 {
-                    let mut buff = vec![0u8; length];
-                    match stream.read(&mut buff){
-                        Ok(count) if count > 0 => {
-                            data_str = String::from_utf8(buff[0..count].to_vec()).unwrap();
-                        },
-                        _ => ()
-                    }
-                }
+                    let ts2 = time::now().to_timespec();
+                    let ms2 = (ts2.sec as f32 * 1000.0f32) + (ts2.nsec as f32 / 1_000_000 as f32) as f32;
 
+                    let ms = (ms2 as f32 - ms1 as f32) as f32;
 
-                if data_str.len() > 0 {
-                    let now = time::now();
-                    let ts = now.to_timespec().sec;
-
-                    // calculate route
+                    let key = s[1];
                     let target_node_id = self.calculate_route(key, rts_count);
 
-                    debug!("key {} target_node_id: {}", key, target_node_id);
+                    let _ = stream.write(format!("to node-{} ", target_node_id).as_bytes());
+                    let _ = stream.write(format!("in {}ms\r\n", ms).as_bytes());
+                    info!("set record done in {}ms", ms);
 
-                    if target_node_id == my_guid {
-
-                        trace!("insert to myself");
-
-                        let data = format!("{}:{}:{}:{}|{}", length, metadata, expiration, ts, data_str);
-                        debug!("data to store: k: `{}`, v: `{:?}`", key, data);
-
-                        self.db.insert(key.as_bytes(), data.as_bytes());
-
-                        let _ = stream.write(b"STORED\r\n");
-                    }else{
-                        // on other node
-
-                        trace!("insert to other node with guid {}", target_node_id);
-
-                        //let inode = self.inode.lock().unwrap();
-                        let rt = self.get_rt_by_guid(target_node_id).unwrap();
-                        //let mut dbc = DbClient::new(&rt.api_address());
-                        match self.get_db_client(target_node_id, rt.api_address()){
-                            Some(dbc) => {
-                                dbc.set(key, &*data_str);
-                                let _ = stream.write(b"STORED\r\n");
-                            },
-                            None => {
-                                error!("cannot get db_client with guid {} - {}", target_node_id, rt.api_address());
-                                let _ = stream.write(ERROR);
-                            }
-                        }
-
-                    }
-
-
-
+                    result
+                }else{
+                    self.op_set(&s, stream, my_guid, rts_count)
                 }
-
-                Ok(0)
             },
             &"get" => {
 
@@ -304,6 +257,83 @@ impl ApiService {
             }
             self.db_client_cache.get_mut(&node_id)
         }
+    }
+
+
+    fn op_set(&mut self, s:&Vec<&str>, stream:&mut TcpStream, my_guid:u32, rts_count:usize) -> ApiResult {
+
+        let len = s.len();
+
+        if len < 5 {
+            return Err("`set` parameters must be greater than 5");
+        }
+
+        let mut data_str =
+        if len > 5 {
+            s[5..].join(" ").trim().to_string()
+        }else{
+            "".to_string()
+        };
+
+        let key = s[1];
+        let metadata = s[2];
+        let expiration:u32 = s[3].parse().expect("invalid expiration format");
+        let length:usize = s[4].parse().expect("invalid length format");
+
+        //let _ = stream.write(b">\n");
+
+        if data_str.len() == 0 {
+            let mut buff = vec![0u8; length];
+            match stream.read(&mut buff){
+                Ok(count) if count > 0 => {
+                    data_str = String::from_utf8(buff[0..count].to_vec()).unwrap();
+                },
+                _ => ()
+            }
+        }
+
+
+        if data_str.len() > 0 {
+            let now = time::now();
+            let ts = now.to_timespec().sec;
+
+            // calculate route
+            let target_node_id = self.calculate_route(key, rts_count);
+
+            debug!("key {} target_node_id: {}", key, target_node_id);
+
+            if target_node_id == my_guid {
+
+                trace!("insert to myself");
+
+                let data = format!("{}:{}:{}:{}|{}", length, metadata, expiration, ts, data_str);
+                debug!("data to store: k: `{}`, v: `{:?}`", key, data);
+
+                self.db.insert(key.as_bytes(), data.as_bytes());
+
+                let _ = stream.write(b"STORED\r\n");
+            }else{
+                // on other node
+
+                trace!("insert to other node with guid {}", target_node_id);
+
+                //let inode = self.inode.lock().unwrap();
+                let rt = self.get_rt_by_guid(target_node_id).unwrap();
+                //let mut dbc = DbClient::new(&rt.api_address());
+                match self.get_db_client(target_node_id, rt.api_address()){
+                    Some(dbc) => {
+                        dbc.set(key, &*data_str);
+                        let _ = stream.write(b"STORED\r\n");
+                    },
+                    None => {
+                        error!("cannot get db_client with guid {} - {}", target_node_id, rt.api_address());
+                        let _ = stream.write(ERROR);
+                    }
+                }
+            }
+        }
+
+        Ok(0)
     }
 
     fn op_del(&mut self, key:&str, stream:&mut TcpStream, my_guid:u32, rts_count:usize){
