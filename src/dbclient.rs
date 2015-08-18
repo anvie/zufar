@@ -16,10 +16,10 @@ use std::net::Shutdown;
 
 
 pub trait RetryPolicy {
-    fn should_retry(&mut self) -> bool where Self:Sized { false }
-    fn delay(&self) -> u32 where Self:Sized { 0 }
-    fn tried(&self) -> u16 where Self:Sized { 0 }
-    fn reset(&mut self) where Self:Sized {}
+    fn should_retry(&mut self) -> bool;
+    fn delay(&self) -> u32;
+    fn tried(&self) -> u16;
+    fn reset(&mut self);
 }
 
 #[derive(Debug)]
@@ -98,39 +98,11 @@ pub struct DbClient {
     retry_policy: RetryPolicyType
 }
 
-trait IntoRetryPolicy {
-    //type OutRP:Box<RetryPolicy>;
-    
+trait IntoRetryPolicy {    
     fn get_retry_policy(&self) -> Box<RetryPolicy>;
 }
 
-// impl IntoRetryPolicy for BackoffRetryPolicy {
-//     type OutRP = BackoffRetryPolicy;
-//     
-//     fn into_rp(&self) -> Self::OutRP {
-//         self
-//     }
-// }
-
-pub struct BackoffRP;
-pub struct NoRetryRP;
-// 
-// impl IntoRetryPolicy for BackoffRP {
-//     type OutRP = BackoffRetryPolicy;
-//         
-//     fn get_retry_policy(&self) -> BackoffRetryPolicy {
-//         BackoffRetryPolicy::new()
-//     }
-// }
-
-// enum RetryPolicyTypeReturn {
-//     NoRetry(NoRetry),
-//     Backoff(BackoffRetryPolicy)
-// }
-
 impl IntoRetryPolicy for RetryPolicyType {
-    //type OutRP = RetryPolicy;
-        
     fn get_retry_policy(&self) -> Box<RetryPolicy> {
         match self {
             &RetryPolicyType::NoRetry => Box::new(NoRetry::new()),
@@ -138,15 +110,6 @@ impl IntoRetryPolicy for RetryPolicyType {
         }
     }
 }
-
-
-// impl IntoRetryPolicy for RetryPolicyType {
-//     type OutRP = NoRetry;
-//         
-//     fn get_retry_policy(&self) -> NoRetry {
-//         NoRetry::new()
-//     }
-// }
 
 
 impl DbClient {
@@ -157,10 +120,6 @@ impl DbClient {
             stream: RefCell::new(None),
             retry_policy: rp
         }
-    }
-
-    fn zzz(&self) -> Box<RetryPolicy> {
-        self.retry_policy.get_retry_policy()
     }
 
     pub fn connect(&self) -> Result<u16, &'static str> {
@@ -200,7 +159,7 @@ impl DbClient {
         }
     }
 
-    pub fn get_raw(&mut self, key:&str, rp:Box<&mut RetryPolicy>) -> Result<String,&str> {
+    pub fn get_raw(&mut self, key:&str, rp:&mut RetryPolicy) -> Result<String,&str> {
         // let s = self.stream.borrow_mut();
 
         // if s.is_some() {
@@ -305,13 +264,12 @@ impl DbClient {
     //     result
     // }
     
-    pub fn get_ex(&mut self, key:&str) -> Option<String> {
+    pub fn get(&mut self, key:&str) -> Option<String> {
         let mut rp = self.retry_policy.get_retry_policy();
-        rp.reset();
-        None
+        self.get_with_retry(key, &mut *rp)
     }
 
-    pub fn get(&mut self, key:&str, rp:Box<&mut RetryPolicy>) -> Option<String> {
+    pub fn get_with_retry(&mut self, key:&str, rp:&mut RetryPolicy) -> Option<String> {
 
         // let mut done = false;
         // let mut result:Option<String> = None;
@@ -391,21 +349,21 @@ mod tests {
 
     use super::DbClient;
     //use super::BackoffRetryPolicy;
-    use super::RetryPolicy;
-    use super::NoRetry;
+    use super::{NoRetry, RetryPolicyType};
+    //use super::NoRetry;
 
     trait DbClientNoRetry {
         fn get_nop(&mut self, key:&str) -> Option<String>;
     }
 
-    impl DbClientNoRetry for DbClient<NoRetry> {
+    impl DbClientNoRetry for DbClient {
         fn get_nop(&mut self, key:&str) -> Option<String> {
-            self.get(key, &mut NoRetry::new())
+            self.get(key)
         }
     }
 
-    fn get_db() -> DbClient<NoRetry> {
-        DbClient::new(&"127.0.0.1:8122".to_string(), NoRetry::new())
+    fn get_db() -> DbClient {
+        DbClient::new(&"127.0.0.1:8122".to_string(), RetryPolicyType::NoRetry)
     }
 
     #[test]
@@ -416,11 +374,13 @@ mod tests {
         dbc.set("something", "In the way");
         dbc.set("article", "This is very long-long text we tried so far");
         assert_eq!(dbc.get_raw("name", &mut NoRetry::new()), Ok("VALUE name 0 5 \r\nZufar\r\nEND\r\n".to_string()));
-        // assert_eq!(dbc.get_raw("no_name", &mut NoRetry::new()), Ok("END\r\n".to_string()));
-        // assert_eq!(dbc.get_nop("name"), Some("Zufar".to_string()));
-        // assert_eq!(dbc.get_nop(""), None);
-        // assert_eq!(dbc.get_nop("something"), Some("In the way".to_string()));
-        // assert_eq!(dbc.get_nop("article"), Some("This is very long-long text we tried so far".to_string()));
+        assert_eq!(dbc.get("name"), Some("Zufar".to_string()));
+        assert_eq!(dbc.get_raw("no_name", &mut NoRetry::new()), Ok("END\r\n".to_string()));
+        assert_eq!(dbc.get("name"), Some("Zufar".to_string()));
+        assert_eq!(dbc.get(""), None);
+        assert_eq!(dbc.get_nop("something"), Some("In the way".to_string()));
+        assert_eq!(dbc.get_nop("article"), Some("This is very long-long text we tried so far".to_string()));
+        assert_eq!(dbc.get_with_retry("anuuu", &mut NoRetry::new()), None);
     }
 
 }
