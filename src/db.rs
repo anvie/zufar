@@ -1,7 +1,7 @@
 extern crate test;
 
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use std::io::prelude::*;
 use std::io::{BufWriter, BufReader, SeekFrom};
@@ -25,6 +25,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 pub struct Db {
     memtable_eden: BTreeMap<u32, Vec<u8>>,
     memtable: UnsafeCell<BTreeMap<u32, Vec<u8>>>,
+    stable: HashSet<u32>,
     fstore: File,
     crc32: Crc32,
     rocksdb: RocksDB,
@@ -94,6 +95,7 @@ impl Db {
         Db {
             memtable_eden: BTreeMap::new(),
             memtable: UnsafeCell::new(_memtable),
+            stable: HashSet::new(),
             fstore: file,
             crc32: Crc32::new(),
             rocksdb: rocksdb,
@@ -102,29 +104,37 @@ impl Db {
     }
 
     pub fn insert(&mut self, k:&[u8], v:&[u8]){
-        self.memtable_eden.insert(self.crc32.crc(k), v.to_vec());
-        //self.flush();
+        let key_hashed = self.crc32.crc(k);
+        self.memtable_eden.insert(key_hashed, v.to_vec());
+
+        // invalidate stable, to make flusher know the record is changed if any
+        if self.stable.contains(&key_hashed){
+            trace!("invalidate stable for hash {}", key_hashed);
+            self.stable.remove(&key_hashed);
+        }
     }
 
     pub fn get(&mut self, k:&[u8]) -> Option<&[u8]> {
 
-        // let _self = Rc::new(RefCell::new(self));
-
-        // let _self = _self.borrow();
         let key_hashed = self.crc32.crc(k);
 
+        trace!("check from old memtable");
         let rv = unsafe { (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref()) };
         if rv.is_some(){
+            trace!("got from old");
             rv
         }else{
+
             // try search in eden
+            trace!("check from eden memtable");
+
             let rv = self.memtable_eden.get(&key_hashed).map(|d| d.as_ref());
 
             if rv.is_some(){
+                trace!("got from eden");
                 rv
             }else{
                 // try search in rocks
-                // let mt = &mut self.memtable;
 
                 debug!("not found both from old and eden memtable, try to find in rocks");
 
@@ -137,18 +147,28 @@ impl Db {
 
                         trace!("got from rocks, adding into old memtable for recent use.");
 
+                        let rv2 =
                         unsafe {
                             (*self.memtable.get()).insert(key_hashed, (&*x).to_vec());
                             (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref())
-                        }
+                        };
+
+                        match rv2 {
+                            Some(value) => {
+                                // mark as stable, this avoid rewrite to rocks
+                                trace!("added to stable for hash {}", key_hashed);
+                                self.stable.insert(key_hashed);
+                            },
+                            _ => ()
+                        };
+
+                        rv2
                     },
                     _ => None,
                 }
             }
 
         }
-
-
     }
 
     pub fn del(&mut self, key:&[u8]) -> usize {
@@ -221,9 +241,14 @@ impl Db {
                 let iter = (*self.memtable.get()).iter();
                 let mut count = 0;
                 for (k, v) in iter {
-                    //let _k_bytes:&mut [u8] = &mut [0u8; 4];
-                    let mut wtr = Vec::with_capacity(4); //vec![];
-                    // ByteOrder::write_u32::<LittleEndian>(_k_bytes, *k);
+
+                    if self.stable.contains(k){
+                        // already exists in rocks, don't overwrite
+                        trace!("stable hash {} ignored.", k);
+                        continue;
+                    }
+
+                    let mut wtr = Vec::with_capacity(4);
                     wtr.write_u32::<LittleEndian>(*k).unwrap();
                     batch.put(&*wtr, v);
                     count = count + 1;

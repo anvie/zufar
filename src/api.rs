@@ -14,7 +14,7 @@ use std::net::TcpListener;
 //use nix::sys::signal;
 
 
-use internode::{MeState, InternodeService};
+use internode::InternodeService;
 use dbclient::DbClient;
 use dbclient::{RetryPolicy, BackoffRetryPolicy};
 use cluster;
@@ -30,7 +30,7 @@ pub struct ApiService {
     db: Db,
     //rx: Receiver<u32>,
     //rts_count: usize,
-    pub me_state: RefCell<Option<MeState>>,
+    //pub me_state: RefCell<Option<MeState>>,
     crc32: Crc32,
     inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
@@ -41,12 +41,6 @@ pub struct ApiService {
 
 impl ApiService {
     pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {
-
-
-        //let db = Db::new();
-
-        // global_db = Some(db);
-
         let data_dir = {
             let info = info.clone();
             let info = info.lock().unwrap();
@@ -55,9 +49,6 @@ impl ApiService {
 
         ApiService {
             db: Db::new(&data_dir),
-            //rx: rx,
-            //rts_count: 0,
-            me_state: RefCell::new(None),
             crc32: Crc32::new(),
             inode: inode,
             info: info,
@@ -125,29 +116,6 @@ impl ApiService {
             api_service.flush();
         }
 
-    //         thread::spawn(move || {
-    //             loop {
-    //                 // let mut dbi = _db_iface.lock().unwrap();
-    //
-    //                 match rx.recv(){
-    //                     Ok(me_state) => {
-    //                         let mut dbi = _db_iface.lock().unwrap();
-    //
-    //                         let mut c = dbi.me_state.borrow_mut();
-    //                         *c = Some(me_state);
-    //
-    //                         //dbi.set_rts_count(me_state.rts_count);
-    //
-    //                         //let mut rts_count = _rts_count.lock().unwrap();
-    //                         //*rts_count = count;
-    //                         debug!("rts_count updated via rx: {}", c.as_ref().unwrap().rts_count);
-    //                     },
-    //                     _ => ()
-    //                 };
-    //                 debug!("recv..");
-    //                 //thread::sleep_ms(100);
-    //             }
-    //         });
     }
 
     pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8]) -> Result<u16, &'static str> {
@@ -161,11 +129,6 @@ impl ApiService {
             return Ok(0);
         }
 
-        // let c = self.me_state.borrow();
-        // let c = c.as_ref().unwrap();
-        //
-        // let my_guid = c.my_guid;
-        // let rts_count = c.rts_count;
         let (my_guid, rts_count) = {
             let info = self.info.lock().unwrap();
             //let inode = inode.lock().unwrap();
@@ -247,7 +210,6 @@ impl ApiService {
                                 let _ = stream.write(ERROR);
                             }
                         }
-                        //dbc.connect();
 
                     }
 
@@ -465,10 +427,8 @@ impl ApiService {
     }
 
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
-        //trace!("get rt");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
-        //trace!("after get rt");
         match rts.iter().find(|&r| r.guid() == guid){
             Some(rt) => Some(rt.clone()),
             None => None
