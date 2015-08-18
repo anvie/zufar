@@ -174,7 +174,7 @@ impl InternodeService {
                         };
                     }
 
-                    println!("INTERNODE: conn closed.");
+                    //println!("INTERNODE: conn closed.");
 
                 });
             }
