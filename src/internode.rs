@@ -31,13 +31,7 @@ impl InternodeService {
     pub fn new(info:Arc<Mutex<cluster::Info>>) -> Arc<Mutex<InternodeService>> {
         Arc::new(Mutex::new(InternodeService {
             my_guid: 0,
-            // my_node_address: node_address.clone(),
-            // my_api_address: api_address.clone(),
             the_encd: encd::PlainTextEncoderDecoder::new(),
-            // routing_tables: Arc::new(Mutex::new(Vec::new())),
-            //routing_tables: Vec::new(),
-            // seeds: seeds,
-            //tx: tx,
             info: info
         }))
     }
@@ -52,8 +46,6 @@ impl InternodeService {
             let info = info.lock().unwrap();
             (info.my_guid, info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
         };
-
-        //let _self = Arc::new(Mutex::new(self));
 
         // join the network
         for seed in seeds {
@@ -77,7 +69,6 @@ impl InternodeService {
         }
 
 
-        //let my_node_address = node_address.clone();
         {
             let mut _self = _self.lock().unwrap();
             _self.setup_network_keeper();
@@ -173,8 +164,6 @@ impl InternodeService {
                             }
                         };
                     }
-
-                    //println!("INTERNODE: conn closed.");
 
                 });
             }
@@ -273,12 +262,12 @@ impl InternodeService {
 
     }
 
-    fn setup_network_keeper(&self){ //(arc_self: &Arc<Mutex<&'static mut InternodeService>>){
+    fn setup_network_keeper(&self){
 
         let info = self.info.clone();
 
         thread::spawn(move || {
-            //let mut cycle = 0;
+
             loop {
 
                 debug!("checking network health...");
@@ -292,7 +281,6 @@ impl InternodeService {
 
                     for rt in &*routing_tables {
                         debug!("   -> {}", rt.node_address());
-                        //debug!("   -> {:?}", rt);
 
                         let addr:SocketAddr = rt.node_address().parse().unwrap();
                         match TcpStream::connect(addr){
@@ -317,10 +305,8 @@ impl InternodeService {
                     }
 
 
-                    //let mut _self = z.lock().unwrap();
                     let mut count = 0;
                     for guid in to_remove {
-                        //let idx = _self.node_index(*guid) as usize;
 
                         let idx = {
                             let mut it = routing_tables.iter();
@@ -338,23 +324,10 @@ impl InternodeService {
                     if count > 0 {
                         debug!("rts count now: {}", routing_tables.len());
                     }
-                    //tx.send(MeState::new(my_guid, routing_tables.len()));
                 }
 
 
                 debug!("health checking done.");
-
-                // @TODO(robin): code this
-                // {
-                //     let mut _self = z.lock().unwrap();
-                //     if cycle > 10 {
-                //         cycle = 0;
-                //
-                //         _self.send_cmd_and_handle(stream, )
-                //
-                //     }
-                //     cycle = cycle + 1;
-                // }
 
 
                 thread::sleep_ms(15000);
@@ -372,12 +345,11 @@ impl InternodeService {
         match cmd {
             "join" => { // [VERSION]|join|[NODE-ADDRESS]|[API-ADDRESS]
                 trace!("join cmd recvd.");
-                // check parameters
 
+                // check parameters
                 if params.len() != 4 {
                     return Err("Invalid parameter, should be 3");
                 }
-
 
                 let peer_addr = params[2];
 
@@ -444,32 +416,28 @@ impl InternodeService {
             },
             "copy-rt" => { // copy routing tables
 
-                //if self.get_guid_from_stream(stream) > 0 {
-                    trace!("copy routing tables...");
+                trace!("copy routing tables...");
 
-                    {
-                        let mut info = self.info.lock().unwrap();
-                        let mut rts = &mut info.routing_tables;
+                {
+                    let mut info = self.info.lock().unwrap();
+                    let mut rts = &mut info.routing_tables;
 
-                        //println!("routing tables: {:?}", rts);
+                    //println!("routing tables: {:?}", rts);
 
-                        let rtb:Vec<String> = rts.iter()
-                            .map(|rt| format!("{},{},{}", rt.guid(), rt.node_address(), rt.api_address()))
-                            .collect();
-                        let data = format!("v1|rt|{}", rtb.join("|"));
+                    let rtb:Vec<String> = rts.iter()
+                        .map(|rt| format!("{},{},{}", rt.guid(), rt.node_address(), rt.api_address()))
+                        .collect();
+                    let data = format!("v1|rt|{}", rtb.join("|"));
 
-                        info!("routing tables: ");
-                        for rt in rts {
-                            info!("    + node-{} - {} - {}", rt.guid(), rt.node_address(), rt.api_address());
-                        }
-
-                        self.write(stream, &data);
+                    info!("routing tables: ");
+                    for rt in rts {
+                        info!("    + node-{} - {} - {}", rt.guid(), rt.node_address(), rt.api_address());
                     }
 
-                    Ok(0)
-                // }else{
-                //                     Err("not registered as node")
-                //                 }
+                    self.write(stream, &data);
+                }
+
+                Ok(0)
             },
             "add-me" => {
 
@@ -493,8 +461,6 @@ impl InternodeService {
 
                     info!("node {} added into rts by request", node_address);
                     info!("rts count now: {}", rts.len());
-
-
 
                 }
 

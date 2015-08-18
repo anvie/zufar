@@ -16,11 +16,10 @@ use std::net::Shutdown;
 
 
 pub trait RetryPolicy {
-    fn new() -> Self;
-    fn should_retry(&mut self) -> bool;
-    fn delay(&self) -> u32;
-    fn tried(&self) -> u16;
-    fn reset(&mut self);
+    fn should_retry(&mut self) -> bool where Self:Sized { false }
+    fn delay(&self) -> u32 where Self:Sized { 0 }
+    fn tried(&self) -> u16 where Self:Sized { 0 }
+    fn reset(&mut self) where Self:Sized {}
 }
 
 #[derive(Debug)]
@@ -29,14 +28,17 @@ pub struct BackoffRetryPolicy {
     tried:u16
 }
 
-
-impl RetryPolicy for BackoffRetryPolicy {
-    fn new() -> BackoffRetryPolicy {
+impl BackoffRetryPolicy {
+    pub fn new() -> BackoffRetryPolicy {
         BackoffRetryPolicy {
             delay: 1000,
             tried: 0
         }
     }
+}
+
+impl RetryPolicy for BackoffRetryPolicy {    
+
     fn should_retry(&mut self) -> bool {
         self.tried = self.tried + 1;
         self.tried < 10
@@ -55,11 +57,14 @@ impl RetryPolicy for BackoffRetryPolicy {
 
 pub struct NoRetry;
 
-
-impl RetryPolicy for NoRetry {
-    fn new() -> NoRetry {
+impl NoRetry {
+    pub fn new() -> NoRetry {
         NoRetry
     }
+}
+
+impl RetryPolicy for NoRetry {
+
     fn should_retry(&mut self) -> bool {
         false
     }
@@ -74,32 +79,88 @@ impl RetryPolicy for NoRetry {
     }
 }
 
-// #[derive(Debug)]
-// enum RetryPolicyType {
-//     Backoff
-// }
+
+
+#[derive(Debug)]
+pub enum RetryPolicyType {
+    Backoff,
+    NoRetry
+}
 
 
 type DbcResult = Result<String,&'static str>;
 
 
 #[derive(Debug)]
-pub struct DbClient<T> where T:RetryPolicy {
+pub struct DbClient {
     address: String,
     stream: RefCell<Option<TcpStream>>,
-    retry_policy: T
+    retry_policy: RetryPolicyType
+}
+
+trait IntoRetryPolicy {
+    //type OutRP:Box<RetryPolicy>;
+    
+    fn get_retry_policy(&self) -> Box<RetryPolicy>;
+}
+
+// impl IntoRetryPolicy for BackoffRetryPolicy {
+//     type OutRP = BackoffRetryPolicy;
+//     
+//     fn into_rp(&self) -> Self::OutRP {
+//         self
+//     }
+// }
+
+pub struct BackoffRP;
+pub struct NoRetryRP;
+// 
+// impl IntoRetryPolicy for BackoffRP {
+//     type OutRP = BackoffRetryPolicy;
+//         
+//     fn get_retry_policy(&self) -> BackoffRetryPolicy {
+//         BackoffRetryPolicy::new()
+//     }
+// }
+
+// enum RetryPolicyTypeReturn {
+//     NoRetry(NoRetry),
+//     Backoff(BackoffRetryPolicy)
+// }
+
+impl IntoRetryPolicy for RetryPolicyType {
+    //type OutRP = RetryPolicy;
+        
+    fn get_retry_policy(&self) -> Box<RetryPolicy> {
+        match self {
+            &RetryPolicyType::NoRetry => Box::new(NoRetry::new()),
+            &RetryPolicyType::Backoff => Box::new(BackoffRetryPolicy::new())
+        }
+    }
 }
 
 
+// impl IntoRetryPolicy for RetryPolicyType {
+//     type OutRP = NoRetry;
+//         
+//     fn get_retry_policy(&self) -> NoRetry {
+//         NoRetry::new()
+//     }
+// }
 
-impl<T> DbClient<T> where T:RetryPolicy {
 
-    pub fn new(address:&String, rp:T) -> DbClient<T> {
+impl DbClient {
+
+    pub fn new(address:&String, rp:RetryPolicyType) -> DbClient {
         DbClient {
             address: address.clone(),
             stream: RefCell::new(None),
             retry_policy: rp
         }
+    }
+
+    fn zzz(&self) -> Box<RetryPolicy> {
+        self.retry_policy.get_retry_policy()
     }
 
     pub fn connect(&self) -> Result<u16, &'static str> {
@@ -139,7 +200,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
         }
     }
 
-    pub fn get_raw(&mut self, key:&str, rp:&mut T) -> Result<String,&str> {
+    pub fn get_raw(&mut self, key:&str, rp:Box<&mut RetryPolicy>) -> Result<String,&str> {
         // let s = self.stream.borrow_mut();
 
         // if s.is_some() {
@@ -243,8 +304,14 @@ impl<T> DbClient<T> where T:RetryPolicy {
     //
     //     result
     // }
+    
+    pub fn get_ex(&mut self, key:&str) -> Option<String> {
+        let mut rp = self.retry_policy.get_retry_policy();
+        rp.reset();
+        None
+    }
 
-    pub fn get(&mut self, key:&str, rp:&mut T) -> Option<String> {
+    pub fn get(&mut self, key:&str, rp:Box<&mut RetryPolicy>) -> Option<String> {
 
         // let mut done = false;
         // let mut result:Option<String> = None;
@@ -310,7 +377,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
 
 
 
-impl<T> Drop for DbClient<T> where T:RetryPolicy {
+impl Drop for DbClient {
     fn drop(&mut self){
         debug!("db client shutdown.");
         self.stream.borrow_mut().as_ref()

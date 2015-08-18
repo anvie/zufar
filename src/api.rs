@@ -16,7 +16,7 @@ use std::net::TcpListener;
 
 use internode::InternodeService;
 use dbclient::DbClient;
-use dbclient::{RetryPolicy, BackoffRetryPolicy};
+use dbclient::{RetryPolicy, BackoffRetryPolicy, RetryPolicyType};
 use cluster;
 use cluster::RoutingTable;
 
@@ -34,7 +34,7 @@ pub struct ApiService {
     crc32: Crc32,
     inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
-    db_client_cache: HashMap<u32, DbClient<BackoffRetryPolicy>>
+    db_client_cache: HashMap<u32, DbClient>
 }
 
 // static mut global_db:Option<Db> = None;
@@ -281,15 +281,15 @@ impl ApiService {
         }
     }
 
-    fn get_db_client<'a>(&'a mut self, node_id:u32, address:&String) -> Option<&'a mut DbClient<BackoffRetryPolicy>> {
+    fn get_db_client<'a>(&'a mut self, node_id:u32, address:&String) -> Option<&'a mut DbClient> {
         if self.db_client_cache.contains_key(&node_id) {
             trace!("get db client for {} from cache", address);
             self.db_client_cache.get_mut(&node_id)
         }else{
             trace!("get db client for {} miss from cache, build it.", address);
             {
-                let rp = BackoffRetryPolicy::new();
-                let dbc = DbClient::new(&address, rp);
+                //let rp = BackoffRetryPolicy::new();
+                let dbc = DbClient::new(&address, RetryPolicyType::Backoff);
                 dbc.connect();
                 self.db_client_cache.insert(node_id, dbc);
             }
@@ -397,7 +397,7 @@ impl ApiService {
 
                     trace!("trying to delete data from: {:?}", rt);
 
-                    let mut dbc = DbClient::new(&rt.api_address(), BackoffRetryPolicy::new());
+                    let mut dbc = DbClient::new(&rt.api_address(), RetryPolicyType::Backoff);
                     match dbc.connect(){
                         Err(_) => panic!("cannot contact node-{}", target_node_id),
                         _ => (),
@@ -465,7 +465,7 @@ impl ApiService {
 
                     match self.get_db_client(source_node_id, rt.api_address()){
                         Some(dbc) => {
-                            match dbc.get_raw(key, &mut BackoffRetryPolicy::new()){
+                            match dbc.get_raw(key, Box::new(&mut BackoffRetryPolicy::new())){
                                 Ok(result) => {
                                     let _ = stream.write(result.as_bytes());
                                     //let _ = stream.flush();
