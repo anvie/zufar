@@ -50,7 +50,7 @@ $ ./target/debug/zufar status 127.0.0.1 8123
 Status=Up/Down
 |/ State=Normal/Leaving/Joining/Moving
 --  Address              Load       GUID                              Rack
-UN  127.0.0.1:8123         0/10      0                               1
+UN  127.0.0.1:8123         0/10      0                                1
 UN  127.0.0.1:9123         0/7       1                                1
 UN  127.0.0.1:7123         0/2       2                                1
 ```
