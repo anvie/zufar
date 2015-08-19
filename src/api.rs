@@ -1,4 +1,4 @@
-use std::net::{TcpStream, SocketAddr};
+use std::net::TcpStream;
 use std::io::prelude::*;
 use db::Db;
 use time;
@@ -6,17 +6,17 @@ use time;
 use crc32::Crc32;
 use std::thread;
 use std::sync::{Arc, Mutex};
-use std::cell::RefCell;
-use std::net::Shutdown;
+//use std::cell::RefCell;
+//use std::net::Shutdown;
 use std::collections::HashMap;
 use std::net::TcpListener;
-
+use std::sync::mpsc::{Receiver, Sender};
 //use nix::sys::signal;
 
 
 use internode::InternodeService;
 use dbclient::DbClient;
-use dbclient::{RetryPolicy, BackoffRetryPolicy};
+use dbclient::{BackoffRetryPolicy, RetryPolicyType};
 use cluster;
 use cluster::RoutingTable;
 
@@ -34,7 +34,9 @@ pub struct ApiService {
     crc32: Crc32,
     inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
-    db_client_cache: HashMap<u32, DbClient<BackoffRetryPolicy>>
+    db_client_cache: HashMap<u32, DbClient>,
+    tx:Sender<String>,
+    rx:Receiver<String>
 }
 
 // static mut global_db:Option<Db> = None;
@@ -67,7 +69,7 @@ macro_rules! op_timing {
 
 impl ApiService {
 
-    pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {
+    pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>, tx:Sender<String>, rx:Receiver<String>) -> ApiService {
         let data_dir = {
             let info = info.clone();
             let info = info.lock().unwrap();
@@ -79,7 +81,9 @@ impl ApiService {
             crc32: Crc32::new(),
             inode: inode,
             info: info,
-            db_client_cache: HashMap::new()
+            db_client_cache: HashMap::new(),
+            tx: tx,
+            rx: rx
         }
     }
 
@@ -101,7 +105,31 @@ impl ApiService {
             });
         }
 
+        {
+            let api_service = api_service.clone();
 
+            thread::spawn(move || {
+                loop {
+                    {
+                        let mut _self = api_service.lock().unwrap();
+                        match _self.rx.try_recv(){
+                            Ok(data) => {
+                                match &*data {
+                                    "info" => {
+                                        let stat = _self.db.stat();
+                                        _self.tx.send(format!("{}|{}", stat.load(), stat.disk_load())).unwrap();
+                                    },
+                                    _ => ()
+                                }
+                            },
+                            _ => ()
+                        }
+                    }
+
+                    thread::sleep_ms(100);
+                }
+            });
+        }
 
         let listener = TcpListener::bind(&**api_address).unwrap();
         println!("client comm listening at {} ...", api_address);
@@ -281,16 +309,19 @@ impl ApiService {
         }
     }
 
-    fn get_db_client<'a>(&'a mut self, node_id:u32, address:&String) -> Option<&'a mut DbClient<BackoffRetryPolicy>> {
+    fn get_db_client<'a>(&'a mut self, node_id:u32, address:&String) -> Option<&'a mut DbClient> {
         if self.db_client_cache.contains_key(&node_id) {
             trace!("get db client for {} from cache", address);
             self.db_client_cache.get_mut(&node_id)
         }else{
             trace!("get db client for {} miss from cache, build it.", address);
             {
-                let rp = BackoffRetryPolicy::new();
-                let dbc = DbClient::new(&address, rp);
-                dbc.connect();
+                //let rp = BackoffRetryPolicy::new();
+                let dbc = DbClient::new(&address, RetryPolicyType::Backoff);
+                match dbc.connect(){
+                    Ok(_) => (),
+                    Err(e) => error!("cannot connect to remote node {}, {}", address, e)
+                }
                 self.db_client_cache.insert(node_id, dbc);
             }
             self.db_client_cache.get_mut(&node_id)
@@ -397,7 +428,7 @@ impl ApiService {
 
                     trace!("trying to delete data from: {:?}", rt);
 
-                    let mut dbc = DbClient::new(&rt.api_address(), BackoffRetryPolicy::new());
+                    let mut dbc = DbClient::new(&rt.api_address(), RetryPolicyType::Backoff);
                     match dbc.connect(){
                         Err(_) => panic!("cannot contact node-{}", target_node_id),
                         _ => (),

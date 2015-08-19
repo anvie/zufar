@@ -7,7 +7,7 @@ use std::thread;
 use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 //use std::str;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 //use std::io::BufReader;
 use std::error::Error;
 use std::net::Shutdown;
@@ -16,7 +16,6 @@ use std::net::Shutdown;
 
 
 pub trait RetryPolicy {
-    fn new() -> Self;
     fn should_retry(&mut self) -> bool;
     fn delay(&self) -> u32;
     fn tried(&self) -> u16;
@@ -29,14 +28,17 @@ pub struct BackoffRetryPolicy {
     tried:u16
 }
 
-
-impl RetryPolicy for BackoffRetryPolicy {
-    fn new() -> BackoffRetryPolicy {
+impl BackoffRetryPolicy {
+    pub fn new() -> BackoffRetryPolicy {
         BackoffRetryPolicy {
             delay: 1000,
             tried: 0
         }
     }
+}
+
+impl RetryPolicy for BackoffRetryPolicy {
+
     fn should_retry(&mut self) -> bool {
         self.tried = self.tried + 1;
         self.tried < 10
@@ -55,11 +57,14 @@ impl RetryPolicy for BackoffRetryPolicy {
 
 pub struct NoRetry;
 
-
-impl RetryPolicy for NoRetry {
-    fn new() -> NoRetry {
+impl NoRetry {
+    pub fn new() -> NoRetry {
         NoRetry
     }
+}
+
+impl RetryPolicy for NoRetry {
+
     fn should_retry(&mut self) -> bool {
         false
     }
@@ -74,27 +79,42 @@ impl RetryPolicy for NoRetry {
     }
 }
 
-// #[derive(Debug)]
-// enum RetryPolicyType {
-//     Backoff
-// }
+
+
+#[derive(Debug)]
+pub enum RetryPolicyType {
+    Backoff,
+    NoRetry
+}
 
 
 type DbcResult = Result<String,&'static str>;
 
 
 #[derive(Debug)]
-pub struct DbClient<T> where T:RetryPolicy {
+pub struct DbClient {
     address: String,
     stream: RefCell<Option<TcpStream>>,
-    retry_policy: T
+    retry_policy: RetryPolicyType
+}
+
+trait IntoRetryPolicy {
+    fn get_retry_policy(&self) -> Box<RetryPolicy>;
+}
+
+impl IntoRetryPolicy for RetryPolicyType {
+    fn get_retry_policy(&self) -> Box<RetryPolicy> {
+        match self {
+            &RetryPolicyType::NoRetry => Box::new(NoRetry::new()),
+            &RetryPolicyType::Backoff => Box::new(BackoffRetryPolicy::new())
+        }
+    }
 }
 
 
+impl DbClient {
 
-impl<T> DbClient<T> where T:RetryPolicy {
-
-    pub fn new(address:&String, rp:T) -> DbClient<T> {
+    pub fn new(address:&String, rp:RetryPolicyType) -> DbClient {
         DbClient {
             address: address.clone(),
             stream: RefCell::new(None),
@@ -139,7 +159,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
         }
     }
 
-    pub fn get_raw(&mut self, key:&str, rp:&mut T) -> Result<String,&str> {
+    pub fn get_raw(&mut self, key:&str, rp:&mut RetryPolicy) -> Result<String,&str> {
         // let s = self.stream.borrow_mut();
 
         // if s.is_some() {
@@ -192,7 +212,8 @@ impl<T> DbClient<T> where T:RetryPolicy {
                 //let rp = self.retry_policy.clone();
                 if rp.should_retry(){
                     warn!("retrying... ({})", rp.tried());
-                    self.connect();
+
+                    let _ = self.connect();
 
                     thread::sleep_ms(rp.delay());
 
@@ -244,7 +265,12 @@ impl<T> DbClient<T> where T:RetryPolicy {
     //     result
     // }
 
-    pub fn get(&mut self, key:&str, rp:&mut T) -> Option<String> {
+    pub fn get(&mut self, key:&str) -> Option<String> {
+        let mut rp = self.retry_policy.get_retry_policy();
+        self.get_with_retry(key, &mut *rp)
+    }
+
+    pub fn get_with_retry(&mut self, key:&str, rp:&mut RetryPolicy) -> Option<String> {
 
         // let mut done = false;
         // let mut result:Option<String> = None;
@@ -310,7 +336,7 @@ impl<T> DbClient<T> where T:RetryPolicy {
 
 
 
-impl<T> Drop for DbClient<T> where T:RetryPolicy {
+impl Drop for DbClient {
     fn drop(&mut self){
         debug!("db client shutdown.");
         self.stream.borrow_mut().as_ref()
@@ -324,21 +350,21 @@ mod tests {
 
     use super::DbClient;
     //use super::BackoffRetryPolicy;
-    use super::RetryPolicy;
-    use super::NoRetry;
+    use super::{NoRetry, RetryPolicyType};
+    //use super::NoRetry;
 
     trait DbClientNoRetry {
         fn get_nop(&mut self, key:&str) -> Option<String>;
     }
 
-    impl DbClientNoRetry for DbClient<NoRetry> {
+    impl DbClientNoRetry for DbClient {
         fn get_nop(&mut self, key:&str) -> Option<String> {
-            self.get(key, &mut NoRetry::new())
+            self.get(key)
         }
     }
 
-    fn get_db() -> DbClient<NoRetry> {
-        DbClient::new(&"127.0.0.1:8122".to_string(), NoRetry::new())
+    fn get_db() -> DbClient {
+        DbClient::new(&"127.0.0.1:8122".to_string(), RetryPolicyType::NoRetry)
     }
 
     #[test]
@@ -349,11 +375,13 @@ mod tests {
         dbc.set("something", "In the way");
         dbc.set("article", "This is very long-long text we tried so far");
         assert_eq!(dbc.get_raw("name", &mut NoRetry::new()), Ok("VALUE name 0 5 \r\nZufar\r\nEND\r\n".to_string()));
-        // assert_eq!(dbc.get_raw("no_name", &mut NoRetry::new()), Ok("END\r\n".to_string()));
-        // assert_eq!(dbc.get_nop("name"), Some("Zufar".to_string()));
-        // assert_eq!(dbc.get_nop(""), None);
-        // assert_eq!(dbc.get_nop("something"), Some("In the way".to_string()));
-        // assert_eq!(dbc.get_nop("article"), Some("This is very long-long text we tried so far".to_string()));
+        assert_eq!(dbc.get("name"), Some("Zufar".to_string()));
+        assert_eq!(dbc.get_raw("no_name", &mut NoRetry::new()), Ok("END\r\n".to_string()));
+        assert_eq!(dbc.get("name"), Some("Zufar".to_string()));
+        assert_eq!(dbc.get(""), None);
+        assert_eq!(dbc.get_nop("something"), Some("In the way".to_string()));
+        assert_eq!(dbc.get_nop("article"), Some("This is very long-long text we tried so far".to_string()));
+        assert_eq!(dbc.get_with_retry("anuuu", &mut NoRetry::new()), None);
     }
 
 }
