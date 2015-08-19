@@ -23,14 +23,19 @@ tar xvf rocksdb-3.8.tar.gz && cd rocksdb-rocksdb-3.8 && make shared_lib
 sudo make install
 ```
 
-And then build and run single node:
+And then build and run as single node:
 
 ```bash
 $ cargo build
+```
+
+## Test drive
+
+```bash
 $ ./target/debug/zufar serve example/node1.conf
 ```
 
-Add more node:
+Run more node:
 
 ```bash
 $ ./target/debug/zufar serve example/node2.conf
@@ -45,14 +50,46 @@ $ ./target/debug/zufar status 127.0.0.1 8123
 Status=Up/Down
 |/ State=Normal/Leaving/Joining/Moving
 --  Address              Load       GUID                              Rack
-UN  127.0.0.1:7123         0/2       2                                1
-UN  127.0.0.1:8123         0/10      0                                1
+UN  127.0.0.1:8123         0/10      0                               1
 UN  127.0.0.1:9123         0/7       1                                1
+UN  127.0.0.1:7123         0/2       2                                1
 ```
 
+## Write/Read/Delete
 
+Test CRUD operation via telnet (using [memcached protocol](https://github.com/memcached/memcached/blob/master/doc/protocol.txt))
 
+```bash
+$ telnet localhost 8122
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+set hello 0 0 5
+world
+STORED
+get hello
+VALUE hello 0 5 
+world
+END
+del hello
+DELETED
+get hello
+END
+```
 
+With more detail like where the record is stored and how long the operation taken, just add postfix `d` for each command:
+
+```bash
+setd abc123 0 0 6
+def456
+STORED
+node-2 in 0ms
+getd abc123
+VALUE abc123 0 6 
+def456
+END
+node-2 in 0ms
+```
 
 
 
