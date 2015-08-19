@@ -23,7 +23,7 @@ tar xvf rocksdb-3.8.tar.gz && cd rocksdb-rocksdb-3.8 && make shared_lib
 sudo make install
 ```
 
-And then build and run as single node:
+And then build:
 
 ```bash
 $ cargo build
