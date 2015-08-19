@@ -114,7 +114,7 @@ impl ApiService {
                                     "info" => {
                                         let mut _self = api_service.lock().unwrap();
                                         let stat = _self.db.stat();
-                                        tx.send(format!("{}|{}", stat.load(), stat.disk_load())).unwrap();
+                                        tx.send(format!("{}|{}", stat.mem_load(), stat.disk_load())).unwrap();
                                     },
                                     _ => ()
                                 }

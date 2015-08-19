@@ -385,7 +385,7 @@ impl InternodeService {
                     let mut node = NodeClient::new(rt.node_address());
 
                     let n_info = node.info().unwrap();
-                    let load = n_info.load();
+                    let load = n_info.mem_load();
                     let disk_load = n_info.disk_load();
 
                     let data = format!("UN  {}         {}/{}       {}                                1\r\n",

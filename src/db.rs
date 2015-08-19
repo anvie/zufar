@@ -22,19 +22,19 @@ use byteorder::ByteOrder;
 use byteorder::{LittleEndian, WriteBytesExt};
 
 struct Stat {
-    load: usize,
+    mem_load: usize,
     disk_load: usize
 }
 
 impl Stat {
-    pub fn new(load:usize, disk_load:usize) -> Stat {
+    pub fn new(mem_load:usize, disk_load:usize) -> Stat {
         Stat {
-            load: load,
+            mem_load: mem_load,
             disk_load: disk_load
         }
     }
-    pub fn load(&self) -> usize {
-        self.load
+    pub fn mem_load(&self) -> usize {
+        self.mem_load
     }
     pub fn disk_load(&self) -> usize {
         self.disk_load
