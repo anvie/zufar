@@ -9,7 +9,7 @@ durability, where the data is asynchronously transfered from memory to disk back
 * Semi-persistent.
 * Memcached compatible, 
 
-ZufarDB could be [Memcached](http://memcached.org/) alternative, you can use any memcached client library out there. At this moment only support for `set`, `get`, and `delete` command.
+ZufarDB could be [Memcached](http://memcached.org/) alternative, you can use any memcached client library out there. At this moment only support for `set`, `get`, and `delete` command, and not support TTL yet.
 
 ## Compile
 
@@ -35,14 +35,12 @@ $ cargo build
 $ ./target/debug/zufar serve example/node1.conf
 ```
 
-Run more node:
+Run more nodes:
 
 ```bash
 $ ./target/debug/zufar serve example/node2.conf &
 $ ./target/debug/zufar serve example/node3.conf &
 ```
-
-
 
 
 etc.
