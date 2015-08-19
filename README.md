@@ -59,6 +59,9 @@ UN  127.0.0.1:9123         0/7       1                                1
 UN  127.0.0.1:7123         0/2       2                                1
 ```
 
+Looks familiar? Yeah but this is not Cassandra, ignore rack, we don't support network topology and multi-dc yet.
+
+
 ## Write/Read/Delete
 
 Test CRUD operation via telnet (using [memcached protocol](https://github.com/memcached/memcached/blob/master/doc/protocol.txt))
