@@ -177,7 +177,7 @@ impl DbClient {
                 let _ = stream.flush();
             }
 
-            let mut buff = vec![0u8; 256];
+            let mut buff = vec![0u8; 4096 + 512];
 
             trace!("reading...");
 

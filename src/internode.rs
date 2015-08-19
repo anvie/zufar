@@ -108,9 +108,10 @@ impl InternodeService {
                             Ok(count) if count == 0 => break 'the_loop,
                             Ok(count) => {
 
-                                let _self = _self.lock().unwrap();
+                                let _self = _self.lock().expect("cannot lock");
 
-                                let data = _self.the_encd.decode(&buff[0..count]).ok().unwrap();
+                                let data = _self.the_encd.decode(&buff[0..count])
+                                    .ok().expect("cannot decode data");
 
                                 debug!("read {} bytes : {:?}", count, &data);
                                 if data.len() == 0 {
@@ -360,22 +361,22 @@ impl InternodeService {
                 let _ = stream.write(b"|/ State=Normal/Leaving/Joining/Moving\r\n");
                 let _ = stream.write(b"--  Address                Load        GUID                           Rack\r\n");
 
-                let info = self.info.lock().unwrap();
+                let info = self.info.lock().expect("cannot acquire lock for info");
 
                 // me first
                 trace!("send");
-                self.tx.send("info".to_string()).unwrap();
+                self.tx.send("info".to_string()).expect("cannot send tx to info");
                 trace!("recv");
-                let data = self.rx.recv().unwrap();
+                let data = self.rx.recv().expect("cannot receive rx for info");
                 trace!("received: {}", data);
 
                 let s:Vec<&str> = data.split("|").collect();
 
-                let load:usize = s[0].parse().unwrap();
-                let disk_load:usize = s[1].parse().unwrap();
+                let mem_load:usize = s[0].parse().expect("cannot get memory load");
+                let disk_load:usize = s[1].parse().expect("cannot get disk load");
 
                 let data = format!("UN  {}         {}/{}         {}                                1\r\n",
-                    info.my_node_address, load, disk_load, self.my_guid);
+                    info.my_node_address, mem_load, disk_load, self.my_guid);
                 let _ = stream.write(data.as_bytes());
 
                 let rts = &info.routing_tables;
@@ -384,12 +385,17 @@ impl InternodeService {
 
                     let mut node = NodeClient::new(rt.node_address());
 
-                    let n_info = node.info().unwrap();
-                    let load = n_info.mem_load();
-                    let disk_load = n_info.disk_load();
+                    let (mem_load, disk_load) = match node.info(){
+                        Some(n_info) => {
+                            (format!("{}", n_info.mem_load()), format!("{}", n_info.disk_load()))
+                        },
+                        None => {
+                            ("?".to_string(), "?".to_string())
+                        }
+                    };
 
                     let data = format!("UN  {}         {}/{}         {}                                1\r\n",
-                        rt.node_address(), load, disk_load, rt.guid());
+                        rt.node_address(), mem_load, disk_load, rt.guid());
 
                     let _ = stream.write(data.as_bytes());
                 }

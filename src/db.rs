@@ -79,7 +79,7 @@ impl Db {
 
             if path.exists(){
                 // load data into memtable
-                info!("loading commitlog data into memtable...");
+                println!("loading commitlog data into memtable...");
 
                 let ts = time::now().to_timespec().sec;
 
@@ -101,7 +101,7 @@ impl Db {
 
                 let ts = time::now().to_timespec().sec - ts;
 
-                info!("loading commitlog done. {} record(s) added in {}s", _memtable.len(), ts);
+                println!("loading commitlog done. {} record(s) added in {}s", _memtable.len(), ts);
             }
         }
 

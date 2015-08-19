@@ -59,6 +59,10 @@ macro_rules! op_timing {
             let _ = $stream.write(format!("node-{} ", $target_node_id).as_bytes());
             let _ = $stream.write(format!("in {}ms\r\n", ms).as_bytes());
             info!("{} record done in {}ms", $op_str, ms);
+            
+            if result.is_err(){
+                error!("{}", result.unwrap_err());
+            }
 
             result
         }
@@ -139,7 +143,7 @@ impl ApiService {
                 //stream.write(b"Welcome to Zufar\r\n").unwrap();
 
                 'the_loop: loop {
-                    let mut buff = vec![0u8; 512];
+                    let mut buff = vec![0u8; 4096 + 512];
                     match stream.read(&mut buff){
                         Ok(count) if count > 0 => {
                             let data = &buff[0..count];
@@ -172,7 +176,8 @@ impl ApiService {
 
     pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8]) -> ApiResult {
 
-        let d = String::from_utf8(data.to_vec()).ok().unwrap();
+        let d = String::from_utf8(data.to_vec()).ok()
+            .expect("cannot encode data to utf8");
         let s:Vec<&str> = d.trim().split(" ").collect();
 
         debug!("splited s: {:?}", s);
@@ -182,7 +187,7 @@ impl ApiService {
         }
 
         let (my_guid, rts_count) = {
-            let info = self.info.lock().unwrap();
+            let info = self.info.lock().expect("cannot acquire lock for info");
             //let inode = inode.lock().unwrap();
             let rts = &info.routing_tables;
             (info.my_guid, rts.len())
@@ -344,7 +349,19 @@ impl ApiService {
         let key = s[1];
         let metadata = s[2];
         let expiration:u32 = s[3].parse().expect("invalid expiration format");
-        let length:usize = s[4].parse().expect("invalid length format");
+        let length:usize = {
+            if len == 5 {
+                let s:Vec<&str> = s[4].split("\r\n").collect();
+                if s.len() > 1 {
+                    data_str = s[1].to_string();
+                    s[0].parse().expect("invalid length format (1)")
+                }else{
+                    s[0].parse().expect("invalid length format (2)")
+                }
+            }else{
+                s[4].parse().expect("invalid length format (3)")
+            }
+        };
 
         //let _ = stream.write(b">\n");
 
@@ -357,6 +374,8 @@ impl ApiService {
                 _ => ()
             }
         }
+        
+        trace!("data_str: {}", data_str);
 
 
         if data_str.len() > 0 {
@@ -397,6 +416,8 @@ impl ApiService {
                     }
                 }
             }
+        }else{
+            return Err("data length is zero");
         }
 
         Ok(0)

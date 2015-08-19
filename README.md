@@ -99,4 +99,4 @@ node-2 in 0ms
 
 
 
-**NOTE: not production ready, this is my personal research to learning Rust.**
+**WARNING: not production ready, this is my personal research to learning Rust.**
