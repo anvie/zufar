@@ -2,7 +2,7 @@
 #![plugin(docopt_macros)]
 #![feature(ip_addr)]
 #![feature(test)]
-#![feature(duration)]
+//#![feature(duration)] <-- already stable
 #![feature(socket_timeout)]
 #![allow(dead_code)]
 #![feature(path_ext)]
@@ -58,15 +58,14 @@ docopt!(Args derive Debug, "
 Zufar
 
 Usage:
-  zufar serve <host> <port>
   zufar serve <configfile>
-  zufar status <host> <port>
+  zufar status [<host>] [<port>]
   zufar --version
 
 Options:
   -h --help             Show this screen.
   --version             Show version.
-", arg_port: Option<i32>);
+", arg_host: Option<String>, arg_port: Option<i32>);
 
 use node::{NodeClient};
 //use std::thread;
@@ -80,12 +79,13 @@ fn main() {
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
     //println!("{:?}", args);
 
-    if (&args).flag_version{
+    if args.flag_version {
         println!("version 0.1.0");
         return;
     }
 
-    let mut api_address = format!("{}:{}", args.arg_host, args.arg_port.unwrap_or(9123));
+    let mut api_address = format!("{}:{}", args.arg_host.unwrap_or("127.0.0.1".to_string()), 
+        args.arg_port.unwrap_or(9123));
 
     if args.cmd_status {
 
