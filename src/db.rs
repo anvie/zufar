@@ -245,7 +245,9 @@ impl Db {
     }
 
     pub fn flush(&mut self){
-
+        
+        self.print_stats();
+        
         let mut to_remove:Vec<u32> = Vec::new();
 
         {
