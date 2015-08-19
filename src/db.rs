@@ -50,6 +50,8 @@ pub struct Db {
     rocksdb: RocksDB,
     _flush_counter: u16,
     _commitlog_file_path: String,
+    _disk_load_loaded: bool,
+    _disk_load: usize
 }
 
 impl Db {
@@ -126,22 +128,33 @@ impl Db {
             crc32: Crc32::new(),
             rocksdb: rocksdb,
             _flush_counter: 0u16,
-            _commitlog_file_path: commitlog_path.to_string()
+            _commitlog_file_path: commitlog_path.to_string(),
+            _disk_load_loaded: false,
+            _disk_load: 0
         }
     }
 
     pub fn stat(&mut self) -> Stat {
         let mem_load = self.memtable_eden.len() + unsafe { (*self.memtable.get()).len() };
-        let mut disk_load:usize = 0;
-
-        //@TODO(robin): optimize this to use counter instead
-        let mut iter = self.rocksdb.iterator();
-        let iter = iter.from_start();
-        for _ in iter {
-            disk_load = disk_load + 1;
+        
+        if !self._disk_load_loaded {
+            
+            debug!("disk load not calculated yet, calculate first.");
+            
+            self._disk_load_loaded = true;
+        
+            let mut disk_load:usize = 0;
+            let mut iter = self.rocksdb.iterator();
+            let iter = iter.from_start();
+            for _ in iter {
+                disk_load = disk_load + 1;
+            }
+            
+            // update new disk load.
+            self._disk_load = disk_load;
         }
 
-        Stat::new(mem_load, disk_load)
+        Stat::new(mem_load, self._disk_load)
     }
 
     pub fn insert(&mut self, k:&[u8], v:&[u8]){
@@ -153,6 +166,8 @@ impl Db {
             trace!("invalidate stable for hash {}", key_hashed);
             self.stable.remove(&key_hashed);
         }
+        
+        self._disk_load = self._disk_load + 1;
     }
 
     pub fn get(&mut self, k:&[u8]) -> Option<&[u8]> {
@@ -220,6 +235,8 @@ impl Db {
                     let mut wtr = Vec::with_capacity(4);
                     wtr.write_u32::<LittleEndian>(hash_key).unwrap();
                     self.rocksdb.delete(&*wtr).unwrap();
+                    
+                    self._disk_load = self._disk_load - 1;
 
                     return 0;
                 }
