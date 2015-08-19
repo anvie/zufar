@@ -358,7 +358,7 @@ impl InternodeService {
                 let _ = stream.write(b"===============\r\n");
                 let _ = stream.write(b"Status=Up/Down\r\n");
                 let _ = stream.write(b"|/ State=Normal/Leaving/Joining/Moving\r\n");
-                let _ = stream.write(b"--  Address              Load       GUID                              Rack\r\n");
+                let _ = stream.write(b"--  Address                Load        GUID                           Rack\r\n");
 
                 let info = self.info.lock().unwrap();
 
@@ -374,7 +374,7 @@ impl InternodeService {
                 let load:usize = s[0].parse().unwrap();
                 let disk_load:usize = s[1].parse().unwrap();
 
-                let data = format!("UN  {}         {}/{}       {}                                1\r\n",
+                let data = format!("UN  {}         {}/{}        {}                                1\r\n",
                     info.my_node_address, load, disk_load, self.my_guid);
                 let _ = stream.write(data.as_bytes());
 

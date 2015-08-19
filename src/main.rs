@@ -174,12 +174,12 @@ fn main() {
     let (tx_api, rx_api) = channel();
 
     let inode = InternodeService::new(info.clone(), tx_inode, rx_api);
-    let api_service = ApiService::new(inode.clone(), info.clone(), tx_api, rx_inode);
+    let api_service = ApiService::new(inode.clone(), info.clone());
 
     InternodeService::start(inode);
 
     if args.cmd_serve {
-        api_service.start(&api_address);
+        api_service.start(&api_address, tx_api, rx_inode);
     }
 
 }
