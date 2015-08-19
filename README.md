@@ -38,8 +38,12 @@ $ ./target/debug/zufar serve example/node1.conf
 Run more node:
 
 ```bash
-$ ./target/debug/zufar serve example/node2.conf
+$ ./target/debug/zufar serve example/node2.conf &
+$ ./target/debug/zufar serve example/node3.conf &
 ```
+
+
+
 
 etc.
 
