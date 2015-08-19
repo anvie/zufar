@@ -1,6 +1,6 @@
-use std;
-use std::thread;
-use std::net::TcpListener;
+//use std;
+//use std::thread;
+//use std::net::TcpListener;
 use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 use std::str;
@@ -13,7 +13,7 @@ pub struct Node {
 }
 
 impl Node {
-    
+
     pub fn new(guid:u32, node_address:&String, api_address:&String) -> Node {
         Node {
             guid: guid,
@@ -21,16 +21,16 @@ impl Node {
             api_address: api_address.clone()
         }
     }
-    
+
     pub fn add_to_rts(&mut self, node:Node){
         debug!("adding {:?} to {:?} rts", &node, self);
-        
+
         let addr:SocketAddr = self.node_address.parse().unwrap();
         match TcpStream::connect(addr){
             Ok(ref mut stream) => {
 
-                
-                self.send_cmd_and_handle(stream, &*format!("v1|add-me|{}|{}|{}", 
+
+                self.send_cmd_and_handle(stream, &*format!("v1|add-me|{}|{}|{}",
                     node.guid, node.node_address, node.api_address));
 
                 trace!("add to rts done.");
@@ -40,7 +40,7 @@ impl Node {
             }
         }
     }
-    
+
     fn send_cmd_and_handle(&mut self, stream:&mut TcpStream, data:&str){
         let _ = stream.write(data.as_bytes());
         let _ = stream.flush();
@@ -51,14 +51,14 @@ impl Node {
             },
             Err(_) => ""
         };
-        
+
         debug!("buff: {}", resp);
-        
+
         let s:Vec<&str> = resp.trim().split("|").collect();
-        
+
         if s.len() < 2 {
             return;
         }
-        
+
     }
 }

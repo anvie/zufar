@@ -7,8 +7,8 @@ use std::io::prelude::*;
 //use std::error;
 use std::str;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Receiver, Sender};
-use std::cell::RefCell;
+//use std::sync::mpsc::{Receiver, Sender};
+//use std::cell::RefCell;
 
 use encd;
 use encd::MessageEncoderDecoder;
@@ -39,12 +39,12 @@ impl InternodeService {
     pub fn start(_self:Arc<Mutex<InternodeService>>){
 
 
-        let (my_guid, my_node_address, my_api_address, seeds) = {
+        let (my_node_address, my_api_address, seeds) = {
             let _self = _self.clone();
             let _self = _self.lock().unwrap();
             let info = _self.info.clone();
             let info = info.lock().unwrap();
-            (info.my_guid, info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
+            (info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
         };
 
         // join the network
@@ -76,9 +76,9 @@ impl InternodeService {
 
 
         let _self = _self.clone();
-        let info = {
-            _self.lock().unwrap().info.clone()
-        };
+        // let info = {
+        //     _self.lock().unwrap().info.clone()
+        // };
 
 
         thread::spawn(move || {
@@ -88,7 +88,7 @@ impl InternodeService {
             for stream in listener.incoming() {
 
                 let _self = _self.clone();
-                let info = info.clone();
+                //let info = info.clone();
 
                 thread::spawn(move || {
 
@@ -289,8 +289,9 @@ impl InternodeService {
                                 let mut buff = vec![0u8; 100];
                                 match stream.read(&mut buff) {
                                     Ok(count) if count > 0 => {
-                                        let data = String::from_utf8(buff).ok().unwrap();
-                                        //debug!("got {}", data);
+                                        // let data = String::from_utf8(buff).ok().unwrap();
+                                        // debug!("got {}", data);
+                                        ()
                                     },
                                     _ => to_remove.push(rt.guid())
                                 }
@@ -420,7 +421,7 @@ impl InternodeService {
 
                 {
                     let mut info = self.info.lock().unwrap();
-                    let mut rts = &mut info.routing_tables;
+                    let rts = &mut info.routing_tables;
 
                     //println!("routing tables: {:?}", rts);
 

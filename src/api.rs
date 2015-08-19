@@ -1,4 +1,4 @@
-use std::net::{TcpStream, SocketAddr};
+use std::net::TcpStream;
 use std::io::prelude::*;
 use db::Db;
 use time;
@@ -6,8 +6,8 @@ use time;
 use crc32::Crc32;
 use std::thread;
 use std::sync::{Arc, Mutex};
-use std::cell::RefCell;
-use std::net::Shutdown;
+//use std::cell::RefCell;
+//use std::net::Shutdown;
 use std::collections::HashMap;
 use std::net::TcpListener;
 
@@ -16,7 +16,7 @@ use std::net::TcpListener;
 
 use internode::InternodeService;
 use dbclient::DbClient;
-use dbclient::{RetryPolicy, BackoffRetryPolicy, RetryPolicyType};
+use dbclient::{BackoffRetryPolicy, RetryPolicyType};
 use cluster;
 use cluster::RoutingTable;
 
@@ -290,7 +290,10 @@ impl ApiService {
             {
                 //let rp = BackoffRetryPolicy::new();
                 let dbc = DbClient::new(&address, RetryPolicyType::Backoff);
-                dbc.connect();
+                match dbc.connect(){
+                    Ok(_) => (),
+                    Err(e) => error!("cannot connect to remote node {}, {}", address, e)
+                }
                 self.db_client_cache.insert(node_id, dbc);
             }
             self.db_client_cache.get_mut(&node_id)

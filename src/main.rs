@@ -20,17 +20,17 @@ extern crate time;
 //extern crate nix;
 extern crate rocksdb;
 
-use std::net::TcpListener;
-use std::thread;
+//use std::net::TcpListener;
+//use std::thread;
 use std::io::prelude::*;
 use std::fs::File;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::{Receiver, Sender};
-use std::net::{TcpStream, SocketAddr};
+//use std::sync::mpsc::channel;
+//use std::sync::mpsc::{Receiver, Sender};
+//use std::net::{TcpStream, SocketAddr};
 use std::sync::{Arc, Mutex};
-use std::process;
-use std::path::Path;
-use std::fs;
+//use std::process;
+//use std::path::Path;
+//use std::fs;
 
 use docopt::Docopt;
 use toml::Value;
@@ -71,8 +71,8 @@ Options:
 fn main() {
 
     env_logger::init().unwrap();
-    
-    
+
+
 
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
     //println!("{:?}", args);
@@ -120,7 +120,7 @@ fn main() {
                                         &Value::String(ref seed) => seeds.push(seed.clone()),
                                         _ => ()
                                     }
-                                    
+
                                 }
                             },
                             _ => err!(5, "No `seeds` in configuration.")
@@ -142,9 +142,9 @@ fn main() {
             }
         }
     }
- 
-    
-    let info = Arc::new(Mutex::new(cluster::Info::new(&node_address, 
+
+
+    let info = Arc::new(Mutex::new(cluster::Info::new(&node_address,
         &api_address, seeds,
         &data_dir)));
 
@@ -153,13 +153,13 @@ fn main() {
     let api_service = ApiService::new(inode.clone(), info.clone());
 
     InternodeService::start(inode);
-    
+
     // extern fn handle_sigint(_:i32){
     //     println!("Interrupted!");
     //     api_service.flush();
     //     process::exit(1);
     // }
-    // 
+    //
     // let sig_action = signal::SigAction::new(handle_sigint,
     //                                           signal::SockFlag::empty(),
     //                                           signal::SigSet::empty());
@@ -173,11 +173,3 @@ fn main() {
     }
 
 }
-
-
-
-
-
-
-
-

@@ -4,14 +4,14 @@ extern crate test;
 use std::collections::{BTreeMap, HashSet};
 
 use std::io::prelude::*;
-use std::io::{BufWriter, BufReader, SeekFrom};
+use std::io::{BufReader, SeekFrom};
 use std::fs;
 use std::fs::File;
 use std::path::Path;
 
 use std::fs::OpenOptions;
-use std::cell::{RefCell, RefMut, UnsafeCell};
-use std::rc::Rc;
+use std::cell::UnsafeCell;
+//use std::rc::Rc;
 
 
 use time;
@@ -62,7 +62,7 @@ impl Db {
 
                 let ts = time::now().to_timespec().sec;
 
-                let mut file = BufReader::new(File::open(&path).unwrap());
+                let file = BufReader::new(File::open(&path).unwrap());
                 let mut count = 0;
                 for line in file.lines().filter_map(|result| result.ok()) {
                     count = count + 1;
@@ -78,13 +78,13 @@ impl Db {
                     _memtable.insert(hash_key, content.into_bytes());
                 }
 
-                let ts = (time::now().to_timespec().sec - ts);
+                let ts = time::now().to_timespec().sec - ts;
 
                 info!("loading commitlog done. {} record(s) added in {}s", _memtable.len(), ts);
             }
         }
 
-        let mut file = match OpenOptions::new()
+        let file = match OpenOptions::new()
                     .write(true)
                     .create(true)
                     .append(true)
@@ -162,14 +162,11 @@ impl Db {
                             (*self.memtable.get()).get(&key_hashed).map(|d| d.as_ref())
                         };
 
-                        match rv2 {
-                            Some(value) => {
-                                // mark as stable, this avoid rewrite to rocks
-                                trace!("added to stable for hash {}", key_hashed);
-                                self.stable.insert(key_hashed);
-                            },
-                            _ => ()
-                        };
+                        if rv2.is_some() {
+                            // mark as stable, this avoid rewrite to rocks
+                            trace!("added to stable for hash {}", key_hashed);
+                            self.stable.insert(key_hashed);
+                        }
 
                         rv2
                     },
@@ -212,7 +209,7 @@ impl Db {
                 //let mut writer = BufWriter::new(&self.fstore);
 
                 // format: [VERSION]|[KEY-HASH]|[CONTENT]
-                self.fstore.write_all(format!("1|{}|{}\n", k, String::from_utf8(v.clone()).unwrap()).as_bytes());
+                let _ = self.fstore.write_all(format!("1|{}|{}\n", k, String::from_utf8(v.clone()).unwrap()).as_bytes());
 
                 to_remove.push(*k);
             }
@@ -246,7 +243,7 @@ impl Db {
             self._flush_counter = 0;
             unsafe {
                 info!("flushing to rocks...");
-                let mut batch = WriteBatch::new();
+                let batch = WriteBatch::new();
                 let iter = (*self.memtable.get()).iter();
                 let mut count = 0;
                 for (k, v) in iter {
@@ -259,10 +256,10 @@ impl Db {
 
                     let mut wtr = Vec::with_capacity(4);
                     wtr.write_u32::<LittleEndian>(*k).unwrap();
-                    batch.put(&*wtr, v);
+                    let _ = batch.put(&*wtr, v);
                     count = count + 1;
                 }
-                self.rocksdb.write(batch);
+                let _ = self.rocksdb.write(batch);
                 info!("{} records flushed into rocks.", count);
             }
 
@@ -278,9 +275,9 @@ impl Db {
     fn reset_commitlog(&mut self){
         trace!("reset commitlog.");
 
-        fs::remove_file(&self._commitlog_file_path);
+        let _ = fs::remove_file(&self._commitlog_file_path);
 
-        let mut file = match OpenOptions::new()
+        let file = match OpenOptions::new()
                     .write(true)
                     .create(true)
                     .open(&self._commitlog_file_path){

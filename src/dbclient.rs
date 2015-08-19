@@ -7,7 +7,7 @@ use std::thread;
 use std::net::{TcpStream, SocketAddr};
 use std::io::prelude::*;
 //use std::str;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 //use std::io::BufReader;
 use std::error::Error;
 use std::net::Shutdown;
@@ -37,7 +37,7 @@ impl BackoffRetryPolicy {
     }
 }
 
-impl RetryPolicy for BackoffRetryPolicy {    
+impl RetryPolicy for BackoffRetryPolicy {
 
     fn should_retry(&mut self) -> bool {
         self.tried = self.tried + 1;
@@ -98,7 +98,7 @@ pub struct DbClient {
     retry_policy: RetryPolicyType
 }
 
-trait IntoRetryPolicy {    
+trait IntoRetryPolicy {
     fn get_retry_policy(&self) -> Box<RetryPolicy>;
 }
 
@@ -212,7 +212,8 @@ impl DbClient {
                 //let rp = self.retry_policy.clone();
                 if rp.should_retry(){
                     warn!("retrying... ({})", rp.tried());
-                    self.connect();
+
+                    let _ = self.connect();
 
                     thread::sleep_ms(rp.delay());
 
@@ -263,7 +264,7 @@ impl DbClient {
     //
     //     result
     // }
-    
+
     pub fn get(&mut self, key:&str) -> Option<String> {
         let mut rp = self.retry_policy.get_retry_policy();
         self.get_with_retry(key, &mut *rp)
