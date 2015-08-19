@@ -35,8 +35,6 @@ pub struct ApiService {
     inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
     db_client_cache: HashMap<u32, DbClient>,
-    tx:Sender<String>,
-    rx:Receiver<String>
 }
 
 // static mut global_db:Option<Db> = None;
@@ -69,7 +67,7 @@ macro_rules! op_timing {
 
 impl ApiService {
 
-    pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>, tx:Sender<String>, rx:Receiver<String>) -> ApiService {
+    pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {
         let data_dir = {
             let info = info.clone();
             let info = info.lock().unwrap();
@@ -82,12 +80,10 @@ impl ApiService {
             inode: inode,
             info: info,
             db_client_cache: HashMap::new(),
-            tx: tx,
-            rx: rx
         }
     }
 
-    pub fn start(self, api_address:&String){
+    pub fn start(self, api_address:&String, tx:Sender<String>, rx:Receiver<String>){
 
         let api_service = Arc::new(Mutex::new(self));
 
@@ -111,13 +107,14 @@ impl ApiService {
             thread::spawn(move || {
                 loop {
                     {
-                        let mut _self = api_service.lock().unwrap();
-                        match _self.rx.try_recv(){
+                        //let mut _self = api_service.lock().unwrap();
+                        match rx.recv(){
                             Ok(data) => {
                                 match &*data {
                                     "info" => {
+                                        let mut _self = api_service.lock().unwrap();
                                         let stat = _self.db.stat();
-                                        _self.tx.send(format!("{}|{}", stat.load(), stat.disk_load())).unwrap();
+                                        tx.send(format!("{}|{}", stat.load(), stat.disk_load())).unwrap();
                                     },
                                     _ => ()
                                 }
@@ -126,7 +123,7 @@ impl ApiService {
                         }
                     }
 
-                    thread::sleep_ms(100);
+                    //thread::sleep_ms(100);
                 }
             });
         }
