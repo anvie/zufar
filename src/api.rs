@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 //use std::net::Shutdown;
 use std::collections::HashMap;
 use std::net::TcpListener;
-
+use std::sync::mpsc::{Receiver, Sender};
 //use nix::sys::signal;
 
 
@@ -34,7 +34,9 @@ pub struct ApiService {
     crc32: Crc32,
     inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
-    db_client_cache: HashMap<u32, DbClient>
+    db_client_cache: HashMap<u32, DbClient>,
+    tx:Sender<String>,
+    rx:Receiver<String>
 }
 
 // static mut global_db:Option<Db> = None;
@@ -67,7 +69,7 @@ macro_rules! op_timing {
 
 impl ApiService {
 
-    pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {
+    pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>, tx:Sender<String>, rx:Receiver<String>) -> ApiService {
         let data_dir = {
             let info = info.clone();
             let info = info.lock().unwrap();
@@ -79,7 +81,9 @@ impl ApiService {
             crc32: Crc32::new(),
             inode: inode,
             info: info,
-            db_client_cache: HashMap::new()
+            db_client_cache: HashMap::new(),
+            tx: tx,
+            rx: rx
         }
     }
 
@@ -101,7 +105,31 @@ impl ApiService {
             });
         }
 
+        {
+            let api_service = api_service.clone();
 
+            thread::spawn(move || {
+                loop {
+                    {
+                        let mut _self = api_service.lock().unwrap();
+                        match _self.rx.try_recv(){
+                            Ok(data) => {
+                                match &*data {
+                                    "info" => {
+                                        let stat = _self.db.stat();
+                                        _self.tx.send(format!("{}|{}", stat.load(), stat.disk_load())).unwrap();
+                                    },
+                                    _ => ()
+                                }
+                            },
+                            _ => ()
+                        }
+                    }
+
+                    thread::sleep_ms(100);
+                }
+            });
+        }
 
         let listener = TcpListener::bind(&**api_address).unwrap();
         println!("client comm listening at {} ...", api_address);

@@ -21,6 +21,25 @@ use rocksdb::{RocksDB, Writable, WriteBatch, RocksDBResult};
 use byteorder::ByteOrder;
 use byteorder::{LittleEndian, WriteBytesExt};
 
+struct Stat {
+    load: usize,
+    disk_load: usize
+}
+
+impl Stat {
+    pub fn new(load:usize, disk_load:usize) -> Stat {
+        Stat {
+            load: load,
+            disk_load: disk_load
+        }
+    }
+    pub fn load(&self) -> usize {
+        self.load
+    }
+    pub fn disk_load(&self) -> usize {
+        self.disk_load
+    }
+}
 
 pub struct Db {
     memtable_eden: BTreeMap<u32, Vec<u8>>,
@@ -109,6 +128,20 @@ impl Db {
             _flush_counter: 0u16,
             _commitlog_file_path: commitlog_path.to_string()
         }
+    }
+
+    pub fn stat(&mut self) -> Stat {
+        let mem_load = self.memtable_eden.len() + unsafe { (*self.memtable.get()).len() };
+        let mut disk_load:usize = 0;
+
+        //@TODO(robin): optimize this to use counter instead
+        let mut iter = self.rocksdb.iterator();
+        let iter = iter.from_start();
+        for _ in iter {
+            disk_load = disk_load + 1;
+        }
+
+        Stat::new(mem_load, disk_load)
     }
 
     pub fn insert(&mut self, k:&[u8], v:&[u8]){

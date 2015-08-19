@@ -24,7 +24,7 @@ extern crate rocksdb;
 //use std::thread;
 use std::io::prelude::*;
 use std::fs::File;
-//use std::sync::mpsc::channel;
+use std::sync::mpsc::channel;
 //use std::sync::mpsc::{Receiver, Sender};
 //use std::net::{TcpStream, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -60,6 +60,7 @@ Zufar
 Usage:
   zufar serve <host> <port>
   zufar serve <configfile>
+  zufar status <host> <port>
   zufar --version
 
 Options:
@@ -67,6 +68,8 @@ Options:
   --version             Show version.
 ", arg_port: Option<i32>);
 
+use node::{NodeClient};
+//use std::thread;
 
 fn main() {
 
@@ -83,6 +86,25 @@ fn main() {
     }
 
     let mut api_address = format!("{}:{}", args.arg_host, args.arg_port.unwrap_or(9123));
+
+    if args.cmd_status {
+
+        let mut node = NodeClient::new(&api_address);
+
+        let _:Option<u8> = node.dispatch(&mut |_node, stream| {
+            let _ = stream.write(b"v1|status|0");
+            //thread::sleep_ms(100);
+            //let mut buff = [0u8; 1024];
+            let mut buff = String::new();
+            let _ = stream.read_to_string(&mut buff);
+            println!("{}", buff);
+            None
+        });
+
+        return;
+    }
+
+
     let mut node_address:String = String::new();
     let mut seeds:Vec<String> = Vec::new();
     let mut data_dir:String = "data/node0".to_string();
@@ -148,25 +170,13 @@ fn main() {
         &api_address, seeds,
         &data_dir)));
 
-    let inode = InternodeService::new(info.clone());
+    let (tx_inode, rx_inode) = channel();
+    let (tx_api, rx_api) = channel();
 
-    let api_service = ApiService::new(inode.clone(), info.clone());
+    let inode = InternodeService::new(info.clone(), tx_inode, rx_api);
+    let api_service = ApiService::new(inode.clone(), info.clone(), tx_api, rx_inode);
 
     InternodeService::start(inode);
-
-    // extern fn handle_sigint(_:i32){
-    //     println!("Interrupted!");
-    //     api_service.flush();
-    //     process::exit(1);
-    // }
-    //
-    // let sig_action = signal::SigAction::new(handle_sigint,
-    //                                           signal::SockFlag::empty(),
-    //                                           signal::SigSet::empty());
-    // unsafe {
-    //     signal::sigaction(signal::SIGINT, &sig_action);
-    // }
-
 
     if args.cmd_serve {
         api_service.start(&api_address);

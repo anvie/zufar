@@ -7,20 +7,24 @@ use std::io::prelude::*;
 //use std::error;
 use std::str;
 use std::sync::{Arc, Mutex};
-//use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 //use std::cell::RefCell;
+
 
 use encd;
 use encd::MessageEncoderDecoder;
-use node::Node;
+use node::{Node, NodeClient};
 use cluster;
 use cluster::RoutingTable;
+
 
 
 pub struct InternodeService {
     pub my_guid: u32,
     the_encd: encd::PlainTextEncoderDecoder,
-    info: Arc<Mutex<cluster::Info>>
+    info: Arc<Mutex<cluster::Info>>,
+    tx:Sender<String>,
+    rx:Receiver<String>
 }
 
 type ZResult = Result<i32, &'static str>;
@@ -28,11 +32,13 @@ type ZResult = Result<i32, &'static str>;
 
 impl InternodeService {
 
-    pub fn new(info:Arc<Mutex<cluster::Info>>) -> Arc<Mutex<InternodeService>> {
+    pub fn new(info:Arc<Mutex<cluster::Info>>, tx:Sender<String>, rx:Receiver<String>) -> Arc<Mutex<InternodeService>> {
         Arc::new(Mutex::new(InternodeService {
             my_guid: 0,
             the_encd: encd::PlainTextEncoderDecoder::new(),
-            info: info
+            info: info,
+            tx: tx,
+            rx: rx
         }))
     }
 
@@ -344,6 +350,68 @@ impl InternodeService {
     fn process_cmd(&self, cmd: &str, params:&Vec<&str>, stream: &mut TcpStream) -> ZResult {
 
         match cmd {
+            "status" => { // [VERSION]|status|[RESERVED]
+                trace!("status cmd recvd.");
+
+                //@TODO(robin): FIXXMEE
+                let _ = stream.write(b"Datacenter: DC1\r\n");
+                let _ = stream.write(b"===============\r\n");
+                let _ = stream.write(b"Status=Up/Down\r\n");
+                let _ = stream.write(b"|/ State=Normal/Leaving/Joining/Moving\r\n");
+                let _ = stream.write(b"--  Address              Load       GUID                              Rack\r\n");
+
+                let info = self.info.lock().unwrap();
+
+                // me first
+                trace!("send");
+                self.tx.send("info".to_string()).unwrap();
+                trace!("recv");
+                let data = self.rx.recv().unwrap();
+                trace!("received: {}", data);
+
+                let s:Vec<&str> = data.split("|").collect();
+
+                let load:usize = s[0].parse().unwrap();
+                let disk_load:usize = s[1].parse().unwrap();
+
+                let data = format!("UN  {}         {}/{}       {}                                1\r\n",
+                    info.my_node_address, load, disk_load, self.my_guid);
+                let _ = stream.write(data.as_bytes());
+
+                let rts = &info.routing_tables;
+
+                for rt in rts {
+
+                    let mut node = NodeClient::new(rt.node_address());
+
+                    let n_info = node.info().unwrap();
+                    let load = n_info.load();
+                    let disk_load = n_info.disk_load();
+
+                    let data = format!("UN  {}         {}/{}       {}                                1\r\n",
+                        rt.node_address(), load, disk_load, rt.guid());
+
+                    let _ = stream.write(data.as_bytes());
+                }
+
+                Ok(1)
+
+            },
+            "info" => {
+
+                self.tx.send("info".to_string()).unwrap();
+                let data = self.rx.recv().unwrap();
+
+                let s:Vec<&str> = data.split("|").collect();
+
+                let load:usize = s[0].parse().unwrap();
+                let disk_load:usize = s[1].parse().unwrap();
+                let data = format!("v1|info|{}|{}", load, disk_load);
+
+                let _ = stream.write(data.as_bytes());
+
+                Ok(0)
+            },
             "join" => { // [VERSION]|join|[NODE-ADDRESS]|[API-ADDRESS]
                 trace!("join cmd recvd.");
 
