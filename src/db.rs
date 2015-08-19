@@ -167,7 +167,6 @@ impl Db {
             self.stable.remove(&key_hashed);
         }
         
-        self._disk_load = self._disk_load + 1;
     }
 
     pub fn get(&mut self, k:&[u8]) -> Option<&[u8]> {
@@ -308,6 +307,8 @@ impl Db {
                     wtr.write_u32::<LittleEndian>(*k).unwrap();
                     let _ = batch.put(&*wtr, v);
                     count = count + 1;
+                    
+                    self._disk_load = self._disk_load + 1;
                 }
                 let _ = self.rocksdb.write(batch);
                 info!("{} records flushed into rocks.", count);
