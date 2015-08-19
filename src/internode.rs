@@ -374,7 +374,7 @@ impl InternodeService {
                 let load:usize = s[0].parse().unwrap();
                 let disk_load:usize = s[1].parse().unwrap();
 
-                let data = format!("UN  {}         {}/{}        {}                                1\r\n",
+                let data = format!("UN  {}         {}/{}         {}                                1\r\n",
                     info.my_node_address, load, disk_load, self.my_guid);
                 let _ = stream.write(data.as_bytes());
 
@@ -385,10 +385,10 @@ impl InternodeService {
                     let mut node = NodeClient::new(rt.node_address());
 
                     let n_info = node.info().unwrap();
-                    let load = n_info.load();
+                    let load = n_info.mem_load();
                     let disk_load = n_info.disk_load();
 
-                    let data = format!("UN  {}         {}/{}       {}                                1\r\n",
+                    let data = format!("UN  {}         {}/{}         {}                                1\r\n",
                         rt.node_address(), load, disk_load, rt.guid());
 
                     let _ = stream.write(data.as_bytes());

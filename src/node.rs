@@ -25,13 +25,13 @@ impl NodeClient {
 }
 
 pub struct NodeInfo {
-    load: usize,
+    mem_load: usize,
     disk_load: usize
 }
 
 impl NodeInfo {
-    pub fn load(&self) -> usize {
-        self.load
+    pub fn mem_load(&self) -> usize {
+        self.mem_load
     }
 
     pub fn disk_load(&self) -> usize {
@@ -92,7 +92,7 @@ impl Node {
                     let s:Vec<String> = s[2..].to_vec();
 
                     let ni = NodeInfo {
-                        load: s[0].parse().unwrap(),
+                        mem_load: s[0].parse().unwrap(),
                         disk_load: s[1].parse().unwrap()
                     };
 

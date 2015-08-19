@@ -58,7 +58,7 @@ macro_rules! op_timing {
 
             let _ = $stream.write(format!("node-{} ", $target_node_id).as_bytes());
             let _ = $stream.write(format!("in {}ms\r\n", ms).as_bytes());
-            info!("$($op_str) record done in {}ms", ms);
+            info!("{} record done in {}ms", $op_str, ms);
 
             result
         }
@@ -114,7 +114,7 @@ impl ApiService {
                                     "info" => {
                                         let mut _self = api_service.lock().unwrap();
                                         let stat = _self.db.stat();
-                                        tx.send(format!("{}|{}", stat.load(), stat.disk_load())).unwrap();
+                                        tx.send(format!("{}|{}", stat.mem_load(), stat.disk_load())).unwrap();
                                     },
                                     _ => ()
                                 }
