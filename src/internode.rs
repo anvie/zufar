@@ -53,25 +53,7 @@ impl InternodeService {
         };
 
         // join the network
-        for seed in seeds {
-            let addr:SocketAddr = seed.parse().unwrap();
-            match TcpStream::connect(addr){
-                Ok(ref mut stream) => {
-
-                    // [VERSION]|join|[NODE-ADDRESS]|[API-ADDRESS]
-                    //let mut inode = inode.lock().unwrap();
-                    //let info = info.lock().unwrap();
-
-                    let mut _self = _self.lock().unwrap();
-                    _self.send_cmd_and_handle(stream, &*format!("v1|join|{}|{}", my_node_address, my_api_address));
-                    _self.send_cmd_and_handle(stream, "v1|copy-rt");
-
-                    trace!("join network done.");
-                },
-                Err(_) => {
-                }
-            }
-        }
+        InternodeService::join_the_network(info);
 
 
         {
@@ -175,92 +157,136 @@ impl InternodeService {
         });
     }
 
-    fn send_cmd_and_handle(&mut self, stream:&mut TcpStream, data:&str){
+    fn join_the_network(info:Arc<Mutex<cluster::Info>>) -> (u32){
+        
+        fn _send(stream:&mut TcpStream, data:&str) -> Option<Vec<String>> {
+            let _ = stream.write(data.as_bytes());
+            let _ = stream.flush();
+            let mut buff = vec![0u8; 100];
+            let resp:&str = match stream.read(&mut buff){
+                Ok(count) => {
+                    str::from_utf8(&buff[0..count]).unwrap()
+                },
+                Err(_) => ""
+            };
 
-        let _ = stream.write(data.as_bytes());
-        let _ = stream.flush();
-        let mut buff = vec![0u8; 100];
-        let resp:&str = match stream.read(&mut buff){
-            Ok(count) => {
-                str::from_utf8(&buff[0..count]).unwrap()
-            },
-            Err(_) => ""
-        };
+            debug!("buff: {}", resp);
 
-        debug!("buff: {}", resp);
+            let s:Vec<&str> = resp.trim().split("|").collect();
 
-        let s:Vec<&str> = resp.trim().split("|").collect();
-
-        if s.len() < 2 {
-            return;
+            if s.len() < 2 {
+                return None;
+            }
+            
+            Some(s.map(|d| d.to_string()).collect())
         }
+        
+        let seeds = {
+            let info = info.lock().unwrap();
+            info.seeds.clone()
+        };
+        
+        for seed in seeds {
+            let addr:SocketAddr = seed.parse().unwrap();
+            match TcpStream::connect(addr){
+                Ok(ref mut stream) => {
 
-        match &s[1] {
-            &"guid" => {
-                self.my_guid = s[2].parse().unwrap();
-                info!("my guid is {}", self.my_guid);
+                    // [VERSION]|join|[NODE-ADDRESS]|[API-ADDRESS]
 
 
-                // add first connected seed to routing tables
-                let seed_guid:u32 = s[3].parse().unwrap();
-                let pa = &stream.peer_addr().ok().unwrap();
-                let connected_seed_addr = format!("{}:{}", pa.ip(), pa.port());
-                info!("added {} to the rts with guid {}", connected_seed_addr, seed_guid);
+                    // let mut _self = _self.lock().unwrap();
+                    // _self.send_cmd_and_handle(stream, &*format!("v1|join|{}|{}", my_node_address, my_api_address));
+                    // _self.send_cmd_and_handle(stream, "v1|copy-rt");
+                    
+                    match _send(stream, &*format!("v1|join|{}|{}", my_node_address, my_api_address)){
+                        Ok(s) if s[1] == "guid" => {
+                            my_guid = s[2].parse().unwrap();
+                            info!("my guid is {}", my_guid);
 
-                let my_api_address = s[4];
 
-                {
-                    let mut info = self.info.lock().unwrap();
-                    info.my_guid = self.my_guid;
-                    //let my_api_address = info.my_api_address.clone();
-                    let mut rts = &mut info.routing_tables;
-                    rts.push(RoutingTable::new(seed_guid, connected_seed_addr, my_api_address.to_string()));
-                    debug!("rts count now: {}", rts.len());
-                }
+                            // add first connected seed to routing tables
+                            let seed_guid:u32 = s[3].parse().unwrap();
+                            let pa = &stream.peer_addr().ok().unwrap();
+                            let connected_seed_addr = format!("{}:{}", pa.ip(), pa.port());
+                            info!("added {} to the rts with guid {}", connected_seed_addr, seed_guid);
 
-            },
-            &"rt" => {
+                            let my_api_address = s[4];
 
-                //// v1|rt|1,127.0.0.1:7123,127.0.0.1:7122
-                //// [VERSION]|rt|[GUID],[NODE-ADDRESS],[API-ADDRESS]
+                            {
+                                let mut info = info.lock().unwrap();
+                                info.my_guid = my_guid;
 
-                let ss = &s[2..];
-
-                for s in ss {
-                    let s:Vec<&str> = s.split(",").collect();
-                    let guid:u32 = s[0].parse().unwrap();
-                    if self.is_node_registered(guid){
-                        continue;
+                                let mut rts = &mut info.routing_tables;
+                                rts.push(RoutingTable::new(seed_guid, connected_seed_addr, my_api_address.to_string()));
+                                debug!("rts count now: {}", rts.len());
+                            }
+                        },
+                        _ => ()
                     }
-                    let node_address = s[1].to_string();
-                    let api_address = s[2].to_string();
+                    match _send(stream, "v1|copy-rt"){
+                        Ok(s) if s[1] == "rt" => {
+                            
+                            //// v1|rt|1,127.0.0.1:7123,127.0.0.1:7122
+                            //// [VERSION]|rt|[GUID],[NODE-ADDRESS],[API-ADDRESS]
 
-                    if guid != self.my_guid {
-                        info!("added {} to the rts with guid {}", node_address, guid);
+                            let ss = &s[2..];
 
-                        let mut info = self.info.lock().unwrap();
-                        {
-                            let mut rts = &mut info.routing_tables;
-                            rts.push(RoutingTable::new(guid, node_address.clone(), api_address.clone()));
-                            debug!("rts count now: {}", rts.len());
-                        }
+                            for s in ss {
+                                let s:Vec<&str> = s.split(",").collect();
+                                let guid:u32 = s[0].parse().unwrap();
+                                if self.is_node_registered(guid){
+                                    continue;
+                                }
+                                let node_address = s[1].to_string();
+                                let api_address = s[2].to_string();
 
-                        // request to add me
-                        let (my_node_address, my_api_address) = (&info.my_node_address, &info.my_api_address);
-                        let mut node = Node::new(guid, &node_address, &api_address); //&format!("node: {} - api: {}", ip_addr, api_addr));
-                        node.add_to_rts(Node::new(info.my_guid, &my_node_address, &my_api_address));
+                                if guid != self.my_guid {
+                                    info!("added {} to the rts with guid {}", node_address, guid);
+
+                                    let mut info = self.info.lock().unwrap();
+                                    {
+                                        let mut rts = &mut info.routing_tables;
+                                        rts.push(RoutingTable::new(guid, node_address.clone(), api_address.clone()));
+                                        debug!("rts count now: {}", rts.len());
+                                    }
+
+                                    // request to add me
+                                    let (my_node_address, my_api_address) = (&info.my_node_address, &info.my_api_address);
+                                    let mut node = Node::new(guid, &node_address, &api_address); //&format!("node: {} - api: {}", ip_addr, api_addr));
+                                    node.add_to_rts(Node::new(info.my_guid, &my_node_address, &my_api_address));
 
 
+                                }
+                            }
+                        },
+                        _ => ()
                     }
+
+                    trace!("join network done.");
+                },
+                Err(_) => {
                 }
-
-
-
-            },
-            x => {
-                warn!("unknown cmd: {}", x)
             }
         }
+
+
+
+        // match &s[1] {
+        //     &"guid" => {
+        //         
+        // 
+        //     },
+        //     &"rt" => {
+        // 
+        //         
+        // 
+        // 
+        // 
+        //     },
+        //     x => {
+        //         warn!("unknown cmd: {}", x)
+        //     }
+        // }
 
     }
 
