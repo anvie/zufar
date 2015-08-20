@@ -23,8 +23,8 @@ pub struct InternodeService {
     pub my_guid: u32,
     the_encd: encd::BytesEncoderDecoder,
     info: Arc<Mutex<cluster::Info>>,
-    tx:Sender<String>,
-    rx:Receiver<String>
+    // tx:Sender<String>,
+    // rx:Receiver<String>
 }
 
 type ZResult = Result<i32, &'static str>;
@@ -32,23 +32,22 @@ type ZResult = Result<i32, &'static str>;
 
 impl InternodeService {
 
-    pub fn new(info:Arc<Mutex<cluster::Info>>, tx:Sender<String>, rx:Receiver<String>) -> Arc<Mutex<InternodeService>> {
-        Arc::new(Mutex::new(InternodeService {
+    pub fn new(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>) -> Arc<Mutex<InternodeService>> {
+        
+        InternodeService {
             my_guid: 0,
             the_encd: encd::BytesEncoderDecoder::new(),
             info: info,
-            tx: tx,
-            rx: rx
-        }))
+            // tx: tx,
+            // rx: rx
+        }
     }
 
-    pub fn start(_self:Arc<Mutex<InternodeService>>){
+    pub fn start(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>){
 
 
         let (my_node_address, my_api_address, seeds) = {
-            let _self = _self.clone();
-            let _self = _self.lock().unwrap();
-            let info = _self.info.clone();
+            //let info = info.clone();
             let info = info.lock().unwrap();
             (info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
         };
@@ -174,9 +173,6 @@ impl InternodeService {
                 });
             }
         });
-
-
-
     }
 
     fn send_cmd_and_handle(&mut self, stream:&mut TcpStream, data:&str){

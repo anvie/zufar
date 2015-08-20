@@ -27,12 +27,12 @@ static ERROR:&'static [u8] = b"ERROR\r\n";
 
 
 pub struct ApiService {
-    db: Db,
+    db: Arc<Mutex<Db>>,
     //rx: Receiver<u32>,
     //rts_count: usize,
     //pub me_state: RefCell<Option<MeState>>,
     crc32: Crc32,
-    inode: Arc<Mutex<InternodeService>>,
+    // inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
     db_client_cache: HashMap<u32, DbClient>,
     _rps: usize,
@@ -92,7 +92,9 @@ macro_rules! op_timing {
 
 impl ApiService {
 
-    pub fn new(inode:Arc<Mutex<InternodeService>>, info:Arc<Mutex<cluster::Info>>) -> ApiService {
+    pub fn new(info:Arc<Mutex<cluster::Info>>,
+            db:Arc<Mutex<Db>>) -> ApiService {
+        
         let data_dir = {
             let info = info.clone();
             let info = info.lock().unwrap();
@@ -100,9 +102,9 @@ impl ApiService {
         };
 
         ApiService {
-            db: Db::new(&data_dir),
+            db: db,
             crc32: Crc32::new(),
-            inode: inode,
+            //inode: inode,
             info: info,
             db_client_cache: HashMap::new(),
             _rps: 1,

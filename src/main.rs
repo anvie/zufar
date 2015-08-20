@@ -169,17 +169,19 @@ fn main() {
     let info = Arc::new(Mutex::new(cluster::Info::new(&node_address,
         &api_address, seeds,
         &data_dir)));
+        
+    let db = Arc::new(Mutex::new(Db::new(&data_dir)));
+    // 
+    // let (tx_inode, rx_inode) = channel();
+    // let (tx_api, rx_api) = channel();
 
-    let (tx_inode, rx_inode) = channel();
-    let (tx_api, rx_api) = channel();
+    //let inode = InternodeService::new(info.clone(), db.clone());
+    let api_service = ApiService::new(info.clone(), db.clone());
 
-    let inode = InternodeService::new(info.clone(), tx_inode, rx_api);
-    let api_service = ApiService::new(inode.clone(), info.clone());
-
-    InternodeService::start(inode);
+    InternodeService::start(info.clone(), db.clone());
 
     if args.cmd_serve {
-        api_service.start(&api_address, tx_api, rx_inode);
+        api_service.start(&api_address);
     }
 
 }
