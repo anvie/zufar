@@ -82,10 +82,6 @@ impl InternodeService {
 
 
         let _self = _self.clone();
-        // let info = {
-        //     _self.lock().unwrap().info.clone()
-        // };
-
 
         thread::spawn(move || {
 
@@ -94,7 +90,6 @@ impl InternodeService {
             for stream in listener.incoming() {
 
                 let _self = _self.clone();
-                //let info = info.clone();
 
                 thread::spawn(move || {
 
