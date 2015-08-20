@@ -35,8 +35,8 @@ pub struct ApiService {
     // inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
     db_client_cache: HashMap<u32, DbClient>,
-    _rps: usize,
-    _last_op: i64
+    // _rps: usize,
+    // _last_op: i64
 }
 
 // static mut global_db:Option<Db> = None;
@@ -90,6 +90,11 @@ macro_rules! op_timing {
     }
 }
 
+struct SpeedMeter {
+    rps: usize,
+    last_op: i64
+}
+
 impl ApiService {
 
     pub fn new(info:Arc<Mutex<cluster::Info>>,
@@ -107,29 +112,36 @@ impl ApiService {
             //inode: inode,
             info: info,
             db_client_cache: HashMap::new(),
-            _rps: 1,
-            _last_op: 0
+            // _rps: 1,
+            // _last_op: 0
         }
     }
 
-    pub fn start(self, api_address:&String, tx:Sender<String>, rx:Receiver<String>){
+    pub fn start(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>){
 
-        let api_service = Arc::new(Mutex::new(self));
+        let speed_meter = Arc::new(Mutex::new(SpeedMeter{rps: 0, last_op: 0}));
 
         {
-            let api_service = api_service.clone();
+            let speed_meter = speed_meter.clone();
+            let db = db.clone();
             thread::spawn(move || {
                 loop {
                     let mut rps:usize = 1;
                     thread::sleep_ms(10000 * (rps as u32));
                     {
                         trace!("try to acquire lock for `api_service` in flusher");
-                        let mut api_service = api_service.lock().unwrap();
+                        //let mut api_service = api_service.lock().unwrap();
+                        
+                        let speed_meter = speed_meter.lock().unwrap();
+                        
                         trace!("try to acquire lock for `api_service` in flusher --> acquired.");
-                        rps = api_service._rps;
+                        rps = speed_meter.rps;
                         debug!("   rps: {}", rps);
                         debug!("flushing...");
-                        api_service.db.flush();
+                        {
+                            let db = db.lock().unwrap();
+                            db.flush();
+                        }
                     }
                 }
             });

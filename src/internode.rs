@@ -16,13 +16,14 @@ use encd::MessageEncoderDecoder;
 use node::{Node, NodeClient};
 use cluster;
 use cluster::RoutingTable;
-
+use db::Db;
 
 
 pub struct InternodeService {
     pub my_guid: u32,
     the_encd: encd::BytesEncoderDecoder,
     info: Arc<Mutex<cluster::Info>>,
+    db: Arc<Mutex<Db>>,
     // tx:Sender<String>,
     // rx:Receiver<String>
 }
@@ -32,12 +33,13 @@ type ZResult = Result<i32, &'static str>;
 
 impl InternodeService {
 
-    pub fn new(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>) -> Arc<Mutex<InternodeService>> {
+    pub fn new(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>) -> InternodeService {
         
         InternodeService {
             my_guid: 0,
             the_encd: encd::BytesEncoderDecoder::new(),
             info: info,
+            db: db
             // tx: tx,
             // rx: rx
         }
@@ -54,15 +56,8 @@ impl InternodeService {
 
         // join the network
         InternodeService::join_the_network(info);
-
-
-        {
-            let mut _self = _self.lock().unwrap();
-            _self.setup_network_keeper();
-        }
-
-
-        let _self = _self.clone();
+        InternodeService::setup_network_keeper(info);
+        
 
         thread::spawn(move || {
 
@@ -70,7 +65,8 @@ impl InternodeService {
             println!("internode comm listening at {} ...", my_node_address);
             for stream in listener.incoming() {
 
-                let _self = _self.clone();
+                let info = info.clone();
+                let db = db.clone();
 
                 thread::spawn(move || {
 
@@ -84,9 +80,11 @@ impl InternodeService {
                             Ok(count) if count == 0 => break 'the_loop,
                             Ok(count) => {
 
-                                trace!("acquire lock for `self` in main loop");
-                                let _self = _self.lock().expect("cannot lock");
-                                trace!("acquire lock for `self` in main loop --> acquired.");
+                                let _self = InternodeService::new(info, db);
+
+                                // trace!("acquire lock for `self` in main loop");
+                                // let _self = _self.lock().expect("cannot lock");
+                                // trace!("acquire lock for `self` in main loop --> acquired.");
 
                                 let data = _self.the_encd.decode(&buff[0..count])
                                     .ok().expect("cannot decode data");
@@ -157,7 +155,7 @@ impl InternodeService {
         });
     }
 
-    fn join_the_network(info:Arc<Mutex<cluster::Info>>) -> (u32){
+    fn join_the_network(info:Arc<Mutex<cluster::Info>>){
         
         fn _send(stream:&mut TcpStream, data:&str) -> Option<Vec<String>> {
             let _ = stream.write(data.as_bytes());
@@ -178,12 +176,13 @@ impl InternodeService {
                 return None;
             }
             
-            Some(s.map(|d| d.to_string()).collect())
+            Some(s.iter().map(|d| d.to_string()).collect())
         }
         
-        let seeds = {
+        let (my_node_address, my_api_address, seeds) = {
+            //let info = info.clone();
             let info = info.lock().unwrap();
-            info.seeds.clone()
+            (info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
         };
         
         for seed in seeds {
@@ -199,8 +198,8 @@ impl InternodeService {
                     // _self.send_cmd_and_handle(stream, "v1|copy-rt");
                     
                     match _send(stream, &*format!("v1|join|{}|{}", my_node_address, my_api_address)){
-                        Ok(s) if s[1] == "guid" => {
-                            my_guid = s[2].parse().unwrap();
+                        Some(s) if s[1] == "guid" => {
+                            let my_guid = s[2].parse().unwrap();
                             info!("my guid is {}", my_guid);
 
 
@@ -224,26 +223,44 @@ impl InternodeService {
                         _ => ()
                     }
                     match _send(stream, "v1|copy-rt"){
-                        Ok(s) if s[1] == "rt" => {
+                        Some(s) if s[1] == "rt" => {
                             
                             //// v1|rt|1,127.0.0.1:7123,127.0.0.1:7122
                             //// [VERSION]|rt|[GUID],[NODE-ADDRESS],[API-ADDRESS]
 
                             let ss = &s[2..];
+                            
+                            let my_guid = {
+                               let info = info.lock().unwrap();
+                               info.my_guid
+                            };
 
                             for s in ss {
                                 let s:Vec<&str> = s.split(",").collect();
                                 let guid:u32 = s[0].parse().unwrap();
-                                if self.is_node_registered(guid){
-                                    continue;
+
+                                {
+                                    let info = info.lock().unwrap();
+                                    let rts = &info.routing_tables;
+                                    let mut it = rts.iter();
+                                    match it.position(|p| p.guid() == guid){
+                                        Some(i) => {
+                                            continue;
+                                        },
+                                        None => ()
+                                    }
                                 }
+                                
+                                // if self.is_node_registered(guid){
+                                //     continue;
+                                // }
                                 let node_address = s[1].to_string();
                                 let api_address = s[2].to_string();
 
-                                if guid != self.my_guid {
+                                if guid != my_guid {
                                     info!("added {} to the rts with guid {}", node_address, guid);
 
-                                    let mut info = self.info.lock().unwrap();
+                                    let mut info = info.lock().unwrap();
                                     {
                                         let mut rts = &mut info.routing_tables;
                                         rts.push(RoutingTable::new(guid, node_address.clone(), api_address.clone()));
@@ -290,9 +307,9 @@ impl InternodeService {
 
     }
 
-    fn setup_network_keeper(&self){
+    fn setup_network_keeper(info:Arc<Mutex<cluster::Info>>){
 
-        let info = self.info.clone();
+        let info = info.clone();
 
         thread::spawn(move || {
 
@@ -302,14 +319,18 @@ impl InternodeService {
 
                 {
                     let mut to_remove:Vec<u32> = Vec::new();
+                    let mut routing_tables:Vec<RoutingTable>;
+                    let mut my_guid:u32;
 
-                    trace!("acquire lock for `info` in check network health");
-                    let mut info = info.lock().unwrap();
-                    trace!("acquire lock for `info` in check network health ---> acquired.");
-                    let my_guid = info.my_guid;
-                    let mut routing_tables = &mut info.routing_tables;
+                    {
+                        trace!("acquire lock for `info` in check network health");
+                        let mut info = info.lock().unwrap();
+                        trace!("acquire lock for `info` in check network health ---> acquired.");
+                        my_guid = info.my_guid;
+                        routing_tables = (&info.routing_tables).clone();
+                    }
 
-                    for rt in &*routing_tables {
+                    for rt in &routing_tables {
                         debug!("   -> {}", rt.node_address());
 
                         let addr:SocketAddr = rt.node_address().parse().unwrap();
@@ -360,7 +381,6 @@ impl InternodeService {
 
                 debug!("health checking done.");
 
-
                 thread::sleep_ms(25000);
 
             }
@@ -389,25 +409,30 @@ impl InternodeService {
                 trace!("acquire `info` lock for getting status --> acquired.");
 
                 // me first
-                trace!("send tx");
-                self.tx.send("info".to_string()).expect("cannot send tx to info");
-                trace!("recv rx");
-                let data = match self.rx.try_recv(){
-                    Ok(d) => d,
-                    Err(e) => {
-                        error!("cannot recv data from channel, {}", e);
-                        return Err("error");
-                    }
+                // trace!("send tx");
+                // self.tx.send("info".to_string()).expect("cannot send tx to info");
+                // trace!("recv rx");
+                // let data = match self.rx.try_recv(){
+                //     Ok(d) => d,
+                //     Err(e) => {
+                //         error!("cannot recv data from channel, {}", e);
+                //         return Err("error");
+                //     }
+                // };
+                // trace!("received: {}", data);
+                // 
+                // let s:Vec<&str> = data.split("|").collect();
+                // 
+                // let mem_load:usize = s[0].parse().expect("cannot get memory load");
+                // let disk_load:usize = s[1].parse().expect("cannot get disk load");
+                
+                let stat = {
+                    let db = self.db.lock().expect("cannot acquire lock for `db` in get status");
+                    &db.stat()
                 };
-                trace!("received: {}", data);
-
-                let s:Vec<&str> = data.split("|").collect();
-
-                let mem_load:usize = s[0].parse().expect("cannot get memory load");
-                let disk_load:usize = s[1].parse().expect("cannot get disk load");
 
                 let data = format!("UN  {}         {}/{}         {}                                1\r\n",
-                    info.my_node_address, mem_load, disk_load, self.my_guid);
+                    info.my_node_address, stat.mem_load(), stat.disk_load(), self.my_guid);
                 let _ = stream.write(data.as_bytes());
 
                 let rts = &info.routing_tables;
@@ -436,17 +461,24 @@ impl InternodeService {
             },
             "info" => {
 
-                trace!("send `info` via tx");
-                self.tx.send("info".to_string()).unwrap();
-                trace!("recv `info` via rx");
-                let data = self.rx.recv().unwrap();
-                trace!("got data from `info` via rx");
+                // trace!("send `info` via tx");
+                // self.tx.send("info".to_string()).unwrap();
+                // trace!("recv `info` via rx");
+                // let data = self.rx.recv().unwrap();
+                // trace!("got data from `info` via rx");
 
-                let s:Vec<&str> = data.split("|").collect();
-
-                let load:usize = s[0].parse().unwrap();
-                let disk_load:usize = s[1].parse().unwrap();
-                let data = format!("v1|info|{}|{}", load, disk_load);
+                // let s:Vec<&str> = data.split("|").collect();
+                // 
+                // let load:usize = s[0].parse().unwrap();
+                // let disk_load:usize = s[1].parse().unwrap();
+                
+                let stat = {
+                    let db = self.db.lock().expect("cannot acquire lock for `db` in get info");
+                    &db.stat()
+                };
+                
+                
+                let data = format!("v1|info|{}|{}", stat.mem_load(), stat.disk_load());
 
                 let _ = stream.write(data.as_bytes());
 
@@ -637,6 +669,7 @@ impl InternodeService {
     fn node_index(&self, id:u32) -> i32 {
         trace!("acquire info lock for node_index()");
         let info = self.info.lock().unwrap();
+        trace!("acquire info lock for node_index() --> acquired");
         let rts = &info.routing_tables;
         let mut it = rts.iter();
         match it.position(|p| p.guid() == id){

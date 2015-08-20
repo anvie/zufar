@@ -50,6 +50,7 @@ use api::ApiService;
 //use internode::MeState;
 use internode::InternodeService;
 //use cluster;
+use db::Db;
 
 
 
@@ -176,12 +177,12 @@ fn main() {
     // let (tx_api, rx_api) = channel();
 
     //let inode = InternodeService::new(info.clone(), db.clone());
-    let api_service = ApiService::new(info.clone(), db.clone());
+    //let api_service = ApiService::new(info.clone(), db.clone());
 
     InternodeService::start(info.clone(), db.clone());
 
     if args.cmd_serve {
-        api_service.start(&api_address);
+        ApiService::start(info.clone(), db.clone());
     }
 
 }
