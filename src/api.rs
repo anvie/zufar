@@ -129,12 +129,12 @@ impl ApiService {
                     let mut rps:usize = 1;
                     thread::sleep_ms(10000 * (rps as u32));
                     {
-                        trace!("try to acquire lock for `api_service` in flusher");
+                        trace!("try to acquire lock for `speed_meter` in flusher");
                         //let mut api_service = api_service.lock().unwrap();
                         
                         let speed_meter = speed_meter.lock().unwrap();
                         
-                        trace!("try to acquire lock for `api_service` in flusher --> acquired.");
+                        trace!("try to acquire lock for `speed_meter` in flusher --> acquired.");
                         rps = speed_meter.rps;
                         debug!("   rps: {}", rps);
                         debug!("flushing...");
@@ -147,34 +147,36 @@ impl ApiService {
             });
         }
 
-        {
-            let api_service = api_service.clone();
-
-            thread::spawn(move || {
-                loop {
-                    {
-                        //let mut _self = api_service.lock().unwrap();
-                        match rx.recv(){
-                            Ok(data) => {
-                                match &*data {
-                                    "info" => {
-                                        trace!("try to acquire lock for `api_service` in rx comm");
-                                        let mut _self = api_service.lock().unwrap();
-                                        trace!("try to acquire lock for `api_service` in rx comm --> acquired");
-                                        let stat = _self.db.stat();
-                                        tx.send(format!("{}|{}", stat.mem_load(), stat.disk_load())).unwrap();
-                                    },
-                                    _ => ()
-                                }
-                            },
-                            _ => ()
-                        }
-                    }
-
-                    //thread::sleep_ms(100);
-                }
-            });
-        }
+        // {
+        //     let api_service = api_service.clone();
+        //     let db = db.clone();
+        // 
+        //     thread::spawn(move || {
+        //         loop {
+        //             {
+        //                 //let mut _self = api_service.lock().unwrap();
+        //                 match rx.recv(){
+        //                     Ok(data) => {
+        //                         match &*data {
+        //                             "info" => {
+        //                                 trace!("try to acquire lock for `api_service` in rx comm");
+        //                                 // let mut _self = api_service.lock().unwrap();
+        //                                 let db = db.lock().unwrap();
+        //                                 trace!("try to acquire lock for `api_service` in rx comm --> acquired");
+        //                                 let stat = db.stat();
+        //                                 tx.send(format!("{}|{}", stat.mem_load(), stat.disk_load())).unwrap();
+        //                             },
+        //                             _ => ()
+        //                         }
+        //                     },
+        //                     _ => ()
+        //                 }
+        //             }
+        // 
+        //             //thread::sleep_ms(100);
+        //         }
+        //     });
+        // }
 
         let listener = TcpListener::bind(&**api_address).unwrap();
         println!("client comm listening at {} ...", api_address);
