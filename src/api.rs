@@ -59,7 +59,7 @@ macro_rules! op_timing {
             let _ = $stream.write(format!("node-{} ", $target_node_id).as_bytes());
             let _ = $stream.write(format!("in {}ms\r\n", ms).as_bytes());
             info!("{} record done in {}ms", $op_str, ms);
-            
+
             if result.is_err(){
                 error!("{}", result.unwrap_err());
             }
@@ -155,7 +155,10 @@ impl ApiService {
                                 _ => ()
                             }
                         },
-                        Err(e) => panic!("error when reading. {}", e),
+                        Err(e) => {
+                            warn!("error when reading. {}", e);
+                            break 'the_loop;
+                        },
                         _ => ()
                     }
                 }
@@ -374,7 +377,7 @@ impl ApiService {
                 _ => ()
             }
         }
-        
+
         trace!("data_str: {}", data_str);
 
 

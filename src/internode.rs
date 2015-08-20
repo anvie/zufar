@@ -21,7 +21,7 @@ use cluster::RoutingTable;
 
 pub struct InternodeService {
     pub my_guid: u32,
-    the_encd: encd::PlainTextEncoderDecoder,
+    the_encd: encd::BytesEncoderDecoder,
     info: Arc<Mutex<cluster::Info>>,
     tx:Sender<String>,
     rx:Receiver<String>
@@ -35,7 +35,7 @@ impl InternodeService {
     pub fn new(info:Arc<Mutex<cluster::Info>>, tx:Sender<String>, rx:Receiver<String>) -> Arc<Mutex<InternodeService>> {
         Arc::new(Mutex::new(InternodeService {
             my_guid: 0,
-            the_encd: encd::PlainTextEncoderDecoder::new(),
+            the_encd: encd::BytesEncoderDecoder::new(),
             info: info,
             tx: tx,
             rx: rx
@@ -117,6 +117,8 @@ impl InternodeService {
                                 if data.len() == 0 {
                                     continue 'the_loop;
                                 }
+
+                                let data = String::from_utf8(data.to_vec()).unwrap();
 
                                 let s:Vec<&str> = data.trim().split("|").collect();
 
@@ -345,7 +347,7 @@ impl InternodeService {
     }
 
     fn write(&self, stream: &mut TcpStream, data: &str){
-        let _ = stream.write(self.the_encd.encode(&data.to_string()).ok().unwrap().as_ref());
+        let _ = stream.write(self.the_encd.encode(&data.as_bytes()).ok().unwrap().as_ref());
     }
 
     fn process_cmd(&self, cmd: &str, params:&Vec<&str>, stream: &mut TcpStream) -> ZResult {
