@@ -35,12 +35,33 @@ pub struct ApiService {
     inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
     db_client_cache: HashMap<u32, DbClient>,
+    _rps: usize,
+    _last_op: i64
 }
 
 // static mut global_db:Option<Db> = None;
 
 type ApiResult = Result<u16, &'static str>;
 
+macro_rules! speed_track {
+    ($myself:ident) => {
+        {
+            let ts = time::now().to_timespec();
+
+            if $myself._last_op == ts.sec {
+                $myself._rps = $myself._rps + 1;
+            }else{
+                if $myself._rps > 1 {
+                    $myself._rps = $myself._rps - ($myself._rps / 2);
+                }
+            }
+
+            trace!("  last op: {}, ts.sec: {}, rps: {}", $myself._last_op, ts.sec, $myself._rps);
+
+            $myself._last_op = ts.sec;
+        }
+    }
+}
 
 macro_rules! op_timing {
     ($op_str:expr, $op:expr, $target_node_id:expr, $stream:ident) => {
@@ -84,6 +105,8 @@ impl ApiService {
             inode: inode,
             info: info,
             db_client_cache: HashMap::new(),
+            _rps: 1,
+            _last_op: 0
         }
     }
 
@@ -95,9 +118,14 @@ impl ApiService {
             let api_service = api_service.clone();
             thread::spawn(move || {
                 loop {
-                    thread::sleep_ms(10000);
+                    let mut rps:usize = 1;
+                    thread::sleep_ms(10000 * (rps as u32));
                     {
+                        trace!("try to acquire lock for `api_service` in flusher");
                         let mut api_service = api_service.lock().unwrap();
+                        trace!("try to acquire lock for `api_service` in flusher --> acquired.");
+                        rps = api_service._rps;
+                        debug!("   rps: {}", rps);
                         debug!("flushing...");
                         api_service.db.flush();
                     }
@@ -116,7 +144,9 @@ impl ApiService {
                             Ok(data) => {
                                 match &*data {
                                     "info" => {
+                                        trace!("try to acquire lock for `api_service` in rx comm");
                                         let mut _self = api_service.lock().unwrap();
+                                        trace!("try to acquire lock for `api_service` in rx comm --> acquired");
                                         let stat = _self.db.stat();
                                         tx.send(format!("{}|{}", stat.mem_load(), stat.disk_load())).unwrap();
                                     },
@@ -147,7 +177,9 @@ impl ApiService {
                     match stream.read(&mut buff){
                         Ok(count) if count > 0 => {
                             let data = &buff[0..count];
+                            trace!("try to acquire lock for `api_service` in main_loop");
                             let mut api_service = api_service.lock().unwrap();
+                            trace!("try to acquire lock for `api_service` in main_loop --> acquired.");
                             match api_service.handle_packet(&mut stream, data){
                                 Ok(i) if i > 0 =>
                                     break 'the_loop
@@ -190,7 +222,9 @@ impl ApiService {
         }
 
         let (my_guid, rts_count) = {
+            trace!("trying to acquire lock for `info` in handle_packet");
             let info = self.info.lock().expect("cannot acquire lock for info");
+            trace!("trying to acquire lock for `info` in handle_packet --> acquired.");
             //let inode = inode.lock().unwrap();
             let rts = &info.routing_tables;
             (info.my_guid, rts.len())
@@ -201,6 +235,8 @@ impl ApiService {
 
         match &s[0] {
             &"set" | &"setd" => {
+
+                speed_track!(self);
 
                 let trace = s[0] == "setd";
 
@@ -250,6 +286,9 @@ impl ApiService {
             // },
             &"get" | &"getd" => {
 
+
+                speed_track!(self);
+
                 if s.len() != 2 {
                     warn!("bad parameter length");
                     let _ = stream.write(END);
@@ -287,6 +326,8 @@ impl ApiService {
 
             },
             &"delete" | &"deleted" | &"del" | &"deld" => {
+
+                speed_track!(self);
 
                 if s.len() != 2 {
                     return Err("bad parameter length");
@@ -549,7 +590,9 @@ impl ApiService {
     }
 
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
+        trace!("trying to acquire lock for `info` in get_rt_by_guid in api.");
         let info = self.info.lock().unwrap();
+        trace!("trying to acquire lock for `info` in get_rt_by_guid in api --> acquired.");
         let rts = &info.routing_tables;
         match rts.iter().find(|&r| r.guid() == guid){
             Some(rt) => Some(rt.clone()),

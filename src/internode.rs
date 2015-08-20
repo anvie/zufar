@@ -108,7 +108,9 @@ impl InternodeService {
                             Ok(count) if count == 0 => break 'the_loop,
                             Ok(count) => {
 
+                                trace!("acquire lock for `self` in main loop");
                                 let _self = _self.lock().expect("cannot lock");
+                                trace!("acquire lock for `self` in main loop --> acquired.");
 
                                 let data = _self.the_encd.decode(&buff[0..count])
                                     .ok().expect("cannot decode data");
@@ -284,7 +286,9 @@ impl InternodeService {
                 {
                     let mut to_remove:Vec<u32> = Vec::new();
 
+                    trace!("acquire lock for `info` in check network health");
                     let mut info = info.lock().unwrap();
+                    trace!("acquire lock for `info` in check network health ---> acquired.");
                     let my_guid = info.my_guid;
                     let mut routing_tables = &mut info.routing_tables;
 
@@ -340,7 +344,7 @@ impl InternodeService {
                 debug!("health checking done.");
 
 
-                thread::sleep_ms(15000);
+                thread::sleep_ms(25000);
 
             }
         });
@@ -363,13 +367,21 @@ impl InternodeService {
                 let _ = stream.write(b"|/ State=Normal/Leaving/Joining/Moving\r\n");
                 let _ = stream.write(b"--  Address                Load        GUID                           Rack\r\n");
 
+                trace!("acquire `info` lock for getting status");
                 let info = self.info.lock().expect("cannot acquire lock for info");
+                trace!("acquire `info` lock for getting status --> acquired.");
 
                 // me first
-                trace!("send");
+                trace!("send tx");
                 self.tx.send("info".to_string()).expect("cannot send tx to info");
-                trace!("recv");
-                let data = self.rx.recv().expect("cannot receive rx for info");
+                trace!("recv rx");
+                let data = match self.rx.try_recv(){
+                    Ok(d) => d,
+                    Err(e) => {
+                        error!("cannot recv data from channel, {}", e);
+                        return Err("error");
+                    }
+                };
                 trace!("received: {}", data);
 
                 let s:Vec<&str> = data.split("|").collect();
@@ -407,8 +419,11 @@ impl InternodeService {
             },
             "info" => {
 
+                trace!("send `info` via tx");
                 self.tx.send("info".to_string()).unwrap();
+                trace!("recv `info` via rx");
                 let data = self.rx.recv().unwrap();
+                trace!("got data from `info` via rx");
 
                 let s:Vec<&str> = data.split("|").collect();
 
@@ -572,6 +587,7 @@ impl InternodeService {
             }
         };
 
+        trace!("acquire info lock for get_rt()");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
         match rts.iter().find(|r| *r.node_address() == socket_ip_address){
@@ -581,6 +597,7 @@ impl InternodeService {
     }
 
     fn get_rt_by_node_address(&self, node_address: &str) -> Option<RoutingTable> {
+        trace!("acquire info lock for get_rt_by_node_address()");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
         match rts.iter().find(|r| *r.node_address() == node_address.to_string()){
@@ -590,6 +607,7 @@ impl InternodeService {
     }
 
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
+        trace!("acquire info lock for get_rt_by_guid()");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
 
@@ -600,6 +618,7 @@ impl InternodeService {
     }
 
     fn node_index(&self, id:u32) -> i32 {
+        trace!("acquire info lock for node_index()");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
         let mut it = rts.iter();
