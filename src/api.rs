@@ -48,17 +48,20 @@ macro_rules! speed_track {
         {
             let ts = time::now().to_timespec();
 
-            if $myself._last_op == ts.sec {
-                $myself._rps = $myself._rps + 1;
+            let $myself = $myself.clone();
+            let mut spm = $myself.lock().unwrap();
+            
+            if spm.last_op == ts.sec {
+                spm.rps = spm.rps + 1;
             }else{
-                if $myself._rps > 1 {
-                    $myself._rps = $myself._rps - ($myself._rps / 2);
+                if spm.rps > 1 {
+                    spm.rps = spm.rps - (spm.rps / 2);
                 }
             }
 
-            trace!("  last op: {}, ts.sec: {}, rps: {}", $myself._last_op, ts.sec, $myself._rps);
+            trace!("  last op: {}, ts.sec: {}, rps: {}", spm.last_op, ts.sec, spm.rps);
 
-            $myself._last_op = ts.sec;
+            spm.last_op = ts.sec;
         }
     }
 }
@@ -117,9 +120,15 @@ impl ApiService {
         }
     }
 
-    pub fn start(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>){
+    pub fn start(api_address:&String, info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>){
 
         let speed_meter = Arc::new(Mutex::new(SpeedMeter{rps: 0, last_op: 0}));
+
+        // let api_address = {
+        //     let info = info.clone();
+        //     let info = info.lock().unwrap();
+        //     info.api_address.clone()
+        // };
 
         {
             let speed_meter = speed_meter.clone();
@@ -136,10 +145,11 @@ impl ApiService {
                         
                         trace!("try to acquire lock for `speed_meter` in flusher --> acquired.");
                         rps = speed_meter.rps;
+                        
                         debug!("   rps: {}", rps);
                         debug!("flushing...");
                         {
-                            let db = db.lock().unwrap();
+                            let mut db = db.lock().unwrap();
                             db.flush();
                         }
                     }
@@ -182,7 +192,11 @@ impl ApiService {
         println!("client comm listening at {} ...", api_address);
         for stream in listener.incoming() {
 
-            let api_service = api_service.clone();
+            // let api_service = api_service.clone();
+            
+            let info = info.clone();
+            let db = db.clone();
+            let speed_meter = speed_meter.clone();
 
             thread::spawn(move || {
                 let mut stream = stream.unwrap();
@@ -190,24 +204,32 @@ impl ApiService {
 
                 'the_loop: loop {
                     let mut buff = vec![0u8; 4096 + 512];
+                    //println!("in loop");
                     match stream.read(&mut buff){
                         Ok(count) if count > 0 => {
+                            
+                            //println!("in loop, read count: {}", count); 
+                            
+                            let mut api_service = ApiService::new(info.clone(), db.clone());
+                            
                             let data = &buff[0..count];
-                            trace!("try to acquire lock for `api_service` in main_loop");
-                            let mut api_service = api_service.lock().unwrap();
-                            trace!("try to acquire lock for `api_service` in main_loop --> acquired.");
-                            match api_service.handle_packet(&mut stream, data){
+                            
+                            match api_service.handle_packet(&mut stream, data, speed_meter.clone()){
                                 Ok(i) if i > 0 =>
                                     break 'the_loop
                                 ,
                                 _ => ()
                             }
                         },
-                        Err(e) => {
-                            warn!("error when reading. {}", e);
+                        Ok(count) => {
+                            println!("got other count: {}", count);
                             break 'the_loop;
                         },
-                        _ => ()
+                        Err(e) => {
+                            error!("error when reading. {}", e);
+                            break 'the_loop;
+                        },
+                        
                     }
                 }
 
@@ -216,16 +238,17 @@ impl ApiService {
 
 
         //@TODO(robin): check this, not working??? Should be working with ^C
-        {
-            info!("flushing...");
-            let api_service = api_service.clone();
-            let mut api_service = api_service.lock().unwrap();
-            api_service.flush();
-        }
+        // {
+        //     info!("flushing...");
+        //     let api_service = api_service.clone();
+        //     let mut api_service = api_service.lock().unwrap();
+        //     api_service.flush();
+        // }
 
     }
 
-    pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8]) -> ApiResult {
+    pub fn handle_packet(&mut self, stream: &mut TcpStream, data: &[u8], 
+            speed_meter:Arc<Mutex<SpeedMeter>>) -> ApiResult {
 
         let d = String::from_utf8(data.to_vec()).ok()
             .expect("cannot encode data to utf8");
@@ -252,7 +275,7 @@ impl ApiService {
         match &s[0] {
             &"set" | &"setd" => {
 
-                speed_track!(self);
+                speed_track!(speed_meter);
 
                 let trace = s[0] == "setd";
 
@@ -303,7 +326,7 @@ impl ApiService {
             &"get" | &"getd" => {
 
 
-                speed_track!(self);
+                speed_track!(speed_meter);
 
                 if s.len() != 2 {
                     warn!("bad parameter length");
@@ -343,7 +366,7 @@ impl ApiService {
             },
             &"delete" | &"deleted" | &"del" | &"deld" => {
 
-                speed_track!(self);
+                speed_track!(speed_meter);
 
                 if s.len() != 2 {
                     return Err("bad parameter length");
@@ -454,7 +477,10 @@ impl ApiService {
                 let data = format!("{}:{}:{}:{}|{}", length, metadata, expiration, ts, data_str);
                 debug!("data to store: k: `{}`, v: `{:?}`", key, data);
 
-                self.db.insert(key.as_bytes(), data.as_bytes());
+                {
+                    let mut db = self.db.lock().expect("Cannot lock db");
+                    db.insert(key.as_bytes(), data.as_bytes());
+                }
 
                 let _ = stream.write(b"STORED\r\n");
             }else{
@@ -492,11 +518,15 @@ impl ApiService {
         if target_node_id == my_guid {
             trace!("del from myself");
 
-            if self.db.del(key.as_bytes()) > 0 {
-                let _ = stream.write(b"DELETED\r\n");
-            }else{
-                let _ = stream.write(b"NOT_FOUND\r\n");
+            {
+                let mut db = self.db.lock().expect("Cannot lock db");
+                if db.del(key.as_bytes()) > 0 {
+                    let _ = stream.write(b"DELETED\r\n");
+                }else{
+                    let _ = stream.write(b"NOT_FOUND\r\n");
+                }
             }
+            
 
         }else{
             trace!("del in other node with guid {}", target_node_id);
@@ -541,8 +571,13 @@ impl ApiService {
 
         if source_node_id == my_guid {
             trace!("get from myself");
+            
+            let mut db = self.db.lock().expect("Cannot lock db");
+            let result = {
+                db.get(key.as_bytes()).clone()
+            };
 
-            match self.db.get(key.as_bytes()){
+            match result{
                 Some(v) => {
 
                     let s = String::from_utf8(v.to_vec()).unwrap();
@@ -628,6 +663,7 @@ impl ApiService {
     }
 
     pub fn flush(&mut self){
-        self.db.flush();
+        let mut db = self.db.lock().expect("Cannot lock db");
+        db.flush();
     }
 }

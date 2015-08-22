@@ -55,8 +55,8 @@ impl InternodeService {
         };
 
         // join the network
-        InternodeService::join_the_network(info);
-        InternodeService::setup_network_keeper(info);
+        InternodeService::join_the_network(info.clone());
+        InternodeService::setup_network_keeper(info.clone());
         
 
         thread::spawn(move || {
@@ -80,7 +80,7 @@ impl InternodeService {
                             Ok(count) if count == 0 => break 'the_loop,
                             Ok(count) => {
 
-                                let _self = InternodeService::new(info, db);
+                                let _self = InternodeService::new(info.clone(), db.clone());
 
                                 // trace!("acquire lock for `self` in main loop");
                                 // let _self = _self.lock().expect("cannot lock");
@@ -198,7 +198,7 @@ impl InternodeService {
                     // _self.send_cmd_and_handle(stream, "v1|copy-rt");
                     
                     match _send(stream, &*format!("v1|join|{}|{}", my_node_address, my_api_address)){
-                        Some(s) if s[1] == "guid" => {
+                        Some(ref s) if s[1] == "guid" => {
                             let my_guid = s[2].parse().unwrap();
                             info!("my guid is {}", my_guid);
 
@@ -209,7 +209,7 @@ impl InternodeService {
                             let connected_seed_addr = format!("{}:{}", pa.ip(), pa.port());
                             info!("added {} to the rts with guid {}", connected_seed_addr, seed_guid);
 
-                            let my_api_address = s[4];
+                            let my_api_address = &s[4];
 
                             {
                                 let mut info = info.lock().unwrap();
@@ -223,7 +223,7 @@ impl InternodeService {
                         _ => ()
                     }
                     match _send(stream, "v1|copy-rt"){
-                        Some(s) if s[1] == "rt" => {
+                        Some(ref s) if s[1] == "rt" => {
                             
                             //// v1|rt|1,127.0.0.1:7123,127.0.0.1:7122
                             //// [VERSION]|rt|[GUID],[NODE-ADDRESS],[API-ADDRESS]
@@ -244,7 +244,7 @@ impl InternodeService {
                                     let rts = &info.routing_tables;
                                     let mut it = rts.iter();
                                     match it.position(|p| p.guid() == guid){
-                                        Some(i) => {
+                                        Some(_) => {
                                             continue;
                                         },
                                         None => ()
@@ -427,7 +427,7 @@ impl InternodeService {
                 // let disk_load:usize = s[1].parse().expect("cannot get disk load");
                 
                 let stat = {
-                    let db = self.db.lock().expect("cannot acquire lock for `db` in get status");
+                    let mut db = self.db.lock().expect("cannot acquire lock for `db` in get status");
                     &db.stat()
                 };
 
@@ -473,7 +473,7 @@ impl InternodeService {
                 // let disk_load:usize = s[1].parse().unwrap();
                 
                 let stat = {
-                    let db = self.db.lock().expect("cannot acquire lock for `db` in get info");
+                    let mut db = self.db.lock().expect("cannot acquire lock for `db` in get info");
                     &db.stat()
                 };
                 

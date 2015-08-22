@@ -182,7 +182,7 @@ fn main() {
     InternodeService::start(info.clone(), db.clone());
 
     if args.cmd_serve {
-        ApiService::start(info.clone(), db.clone());
+        ApiService::start(&api_address, info.clone(), db.clone());
     }
 
 }

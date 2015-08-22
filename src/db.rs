@@ -235,7 +235,9 @@ impl Db {
                     wtr.write_u32::<LittleEndian>(hash_key).unwrap();
                     self.rocksdb.delete(&*wtr).unwrap();
                     
-                    self._disk_load = self._disk_load - 1;
+                    if self._disk_load > 0 {
+                        self._disk_load = self._disk_load - 1;
+                    }
 
                     return 0;
                 }

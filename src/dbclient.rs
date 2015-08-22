@@ -1,4 +1,4 @@
-
+extern crate test;
 
 use std::time::Duration;
 //use std;
@@ -352,6 +352,8 @@ mod tests {
     //use super::BackoffRetryPolicy;
     use super::{NoRetry, RetryPolicyType};
     //use super::NoRetry;
+    use rand::random;
+    use super::test::Bencher;
 
     trait DbClientNoRetry {
         fn get_nop(&mut self, key:&str) -> Option<String>;
@@ -382,6 +384,21 @@ mod tests {
         assert_eq!(dbc.get_nop("something"), Some("In the way".to_string()));
         assert_eq!(dbc.get_nop("article"), Some("This is very long-long text we tried so far".to_string()));
         assert_eq!(dbc.get_with_retry("anuuu", &mut NoRetry::new()), None);
+    }
+    
+    fn rand_string(count:usize) -> String {
+        (0..count).map(|_| (0x30u8 + (random::<f32>() * 96.0) as u8) as char).collect()
+    }
+    
+    #[bench]
+    fn bench_set_n_get(b: &mut Bencher){
+        let mut dbc = get_db();
+        
+        dbc.connect().ok().expect("cannot connect to remote db for testing.");
+        
+        b.iter(||{
+           dbc.set(&*rand_string(10), &*rand_string(20));
+        });
     }
 
 }
