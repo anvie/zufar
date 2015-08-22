@@ -14,7 +14,7 @@ use std::sync::mpsc::{Receiver, Sender};
 //use nix::sys::signal;
 
 
-use internode::InternodeService;
+//use internode::InternodeService;
 use dbclient::DbClient;
 use dbclient::{BackoffRetryPolicy, RetryPolicyType};
 use cluster;
@@ -48,7 +48,7 @@ macro_rules! speed_track {
         {
             let ts = time::now().to_timespec();
 
-            let $myself = $myself.clone();
+            //let $myself = $myself.clone();
             let mut spm = $myself.lock().unwrap();
             
             if spm.last_op == ts.sec {
@@ -103,11 +103,11 @@ impl ApiService {
     pub fn new(info:Arc<Mutex<cluster::Info>>,
             db:Arc<Mutex<Db>>) -> ApiService {
         
-        let data_dir = {
-            let info = info.clone();
-            let info = info.lock().unwrap();
-            info.data_dir.clone()
-        };
+        // let data_dir = {
+        //     let info = info.clone();
+        //     let info = info.lock().unwrap();
+        //     info.data_dir.clone()
+        // };
 
         ApiService {
             db: db,
@@ -123,12 +123,6 @@ impl ApiService {
     pub fn start(api_address:&String, info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>){
 
         let speed_meter = Arc::new(Mutex::new(SpeedMeter{rps: 0, last_op: 0}));
-
-        // let api_address = {
-        //     let info = info.clone();
-        //     let info = info.lock().unwrap();
-        //     info.api_address.clone()
-        // };
 
         {
             let speed_meter = speed_meter.clone();
@@ -157,58 +151,21 @@ impl ApiService {
             });
         }
 
-        // {
-        //     let api_service = api_service.clone();
-        //     let db = db.clone();
-        // 
-        //     thread::spawn(move || {
-        //         loop {
-        //             {
-        //                 //let mut _self = api_service.lock().unwrap();
-        //                 match rx.recv(){
-        //                     Ok(data) => {
-        //                         match &*data {
-        //                             "info" => {
-        //                                 trace!("try to acquire lock for `api_service` in rx comm");
-        //                                 // let mut _self = api_service.lock().unwrap();
-        //                                 let db = db.lock().unwrap();
-        //                                 trace!("try to acquire lock for `api_service` in rx comm --> acquired");
-        //                                 let stat = db.stat();
-        //                                 tx.send(format!("{}|{}", stat.mem_load(), stat.disk_load())).unwrap();
-        //                             },
-        //                             _ => ()
-        //                         }
-        //                     },
-        //                     _ => ()
-        //                 }
-        //             }
-        // 
-        //             //thread::sleep_ms(100);
-        //         }
-        //     });
-        // }
-
         let listener = TcpListener::bind(&**api_address).unwrap();
         println!("client comm listening at {} ...", api_address);
         for stream in listener.incoming() {
 
-            // let api_service = api_service.clone();
-            
             let info = info.clone();
             let db = db.clone();
             let speed_meter = speed_meter.clone();
 
             thread::spawn(move || {
                 let mut stream = stream.unwrap();
-                //stream.write(b"Welcome to Zufar\r\n").unwrap();
 
                 'the_loop: loop {
                     let mut buff = vec![0u8; 4096 + 512];
-                    //println!("in loop");
                     match stream.read(&mut buff){
                         Ok(count) if count > 0 => {
-                            
-                            //println!("in loop, read count: {}", count); 
                             
                             let mut api_service = ApiService::new(info.clone(), db.clone());
                             
@@ -222,11 +179,11 @@ impl ApiService {
                             }
                         },
                         Ok(count) => {
-                            println!("got other count: {}", count);
+                            warn!("got other count: {}", count);
                             break 'the_loop;
                         },
                         Err(e) => {
-                            error!("error when reading. {}", e);
+                            warn!("error when reading. {}", e);
                             break 'the_loop;
                         },
                         

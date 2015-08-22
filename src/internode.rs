@@ -286,25 +286,6 @@ impl InternodeService {
             }
         }
 
-
-
-        // match &s[1] {
-        //     &"guid" => {
-        //         
-        // 
-        //     },
-        //     &"rt" => {
-        // 
-        //         
-        // 
-        // 
-        // 
-        //     },
-        //     x => {
-        //         warn!("unknown cmd: {}", x)
-        //     }
-        // }
-
     }
 
     fn setup_network_keeper(info:Arc<Mutex<cluster::Info>>){
@@ -320,11 +301,11 @@ impl InternodeService {
                 {
                     let mut to_remove:Vec<u32> = Vec::new();
                     let mut routing_tables:Vec<RoutingTable>;
-                    let mut my_guid:u32;
+                    let my_guid:u32;
 
                     {
                         trace!("acquire lock for `info` in check network health");
-                        let mut info = info.lock().unwrap();
+                        let info = info.lock().unwrap();
                         trace!("acquire lock for `info` in check network health ---> acquired.");
                         my_guid = info.my_guid;
                         routing_tables = (&info.routing_tables).clone();

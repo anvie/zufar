@@ -149,9 +149,6 @@ impl DbClient {
             let mut stream = s.as_ref().unwrap();
             let data = format!("set {} 0 0 {} \r\n", key, v.len());
             let _ = stream.write(data.as_bytes());
-            // let _ = stream.flush();
-
-            // let _ = stream.read(&mut [0u8; 512]);
 
             let _ = stream.write(v.as_bytes());
             let _ = stream.flush();
@@ -160,110 +157,69 @@ impl DbClient {
     }
 
     pub fn get_raw(&mut self, key:&str, rp:&mut RetryPolicy) -> Result<String,&str> {
-        // let s = self.stream.borrow_mut();
+        {
+            let s = self.stream.borrow_mut();
+            let mut stream = s.as_ref().unwrap_or_else(|| {
+                    panic!("dbclient.get_raw(): cannot claim stream");
+                });
+            let data = format!("get {}", key);
 
-        // if s.is_some() {
+            trace!("querying server with: {}", data);
 
-            {
-                let s = self.stream.borrow_mut();
-                let mut stream = s.as_ref().unwrap_or_else(|| {
-                        panic!("dbclient.get_raw(): cannot claim stream");
-                    });
-                let data = format!("get {}", key);
+            let _ = stream.write(data.as_bytes());
+            let _ = stream.flush();
+        }
 
-                trace!("querying server with: {}", data);
+        let mut buff = vec![0u8; 4096 + 512];
 
-                let _ = stream.write(data.as_bytes());
-                let _ = stream.flush();
+        trace!("reading...");
+
+        let result =
+        {
+            let s = self.stream.borrow_mut();
+            let mut stream = s.as_ref().unwrap();
+
+            match stream.read(&mut buff) {
+                Ok(count) if count > 0 => {
+
+                    trace!("done reading with {} bytes", count);
+
+                    let content = String::from_utf8(buff[0..count].to_vec()).unwrap();
+
+                    trace!("content: {}", content);
+
+                    Ok(content)
+                },
+                Err(e) => {
+                    error!("cannot read from stream. {}", e.description());
+                    Err("")
+                },
+                x => {
+                    error!("unexpected return: {:?}", x);
+                    Err("cannot read from remote node")
+                }
             }
+        };
 
-            let mut buff = vec![0u8; 4096 + 512];
+        if result.is_err() {
+            //let rp = self.retry_policy.clone();
+            if rp.should_retry(){
+                warn!("retrying... ({})", rp.tried());
 
-            trace!("reading...");
+                let _ = self.connect();
 
-            let result =
-            {
-                let s = self.stream.borrow_mut();
-                let mut stream = s.as_ref().unwrap();
+                thread::sleep_ms(rp.delay());
 
-                match stream.read(&mut buff) {
-                    Ok(count) if count > 0 => {
-
-                        trace!("done reading with {} bytes", count);
-
-                        let content = String::from_utf8(buff[0..count].to_vec()).unwrap();
-
-                        trace!("content: {}", content);
-
-                        Ok(content)
-                    },
-                    Err(e) => {
-                        error!("cannot read from stream. {}", e.description());
-                        Err("")
-                    },
-                    x => {
-                        error!("unexpected return: {:?}", x);
-                        Err("cannot read from remote node")
-                    }
-                }
-            };
-
-            if result.is_err() {
-                //let rp = self.retry_policy.clone();
-                if rp.should_retry(){
-                    warn!("retrying... ({})", rp.tried());
-
-                    let _ = self.connect();
-
-                    thread::sleep_ms(rp.delay());
-
-                    self.get_raw(key, rp)
-                }else{
-                    warn!("give up!");
-                    result
-                }
+                self.get_raw(key, rp)
             }else{
+                warn!("give up!");
                 result
             }
+        }else{
+            result
+        }
 
-        // }else{
-        //     Err("cannot get stream")
-        // }
     }
-
-    // pub fn get_raw(&mut self, key:&str) -> Result<String,&str> {
-    //     let mut done = false;
-    //     let mut result:Result<String, &str> = Err("???");
-    //
-    //     // let mut rp = &mut self.retry_policy;
-    //     self.retry_policy.reset();
-    //
-    //
-    //     while !done {
-    //         //let raw_data = self.get_raw(key);
-    //         result = self.get_raw_internal(key);
-    //
-    //         trace!("result: {:?}", result);
-    //
-    //         if result.is_ok(){
-    //             done = true;
-    //         }else{
-    //             trace!("got error");
-    //             if self.retry_policy.should_retry() {
-    //                 warn!("reconnecting... ({})", self.retry_policy.tried());
-    //                 self.connect();
-    //                 thread::sleep_ms(self.retry_policy.delay());
-    //                 //continue;
-    //
-    //             }else{
-    //                 warn!("give up.");
-    //                 done = true;
-    //             }
-    //         }
-    //     }
-    //
-    //     result
-    // }
 
     pub fn get(&mut self, key:&str) -> Option<String> {
         let mut rp = self.retry_policy.get_retry_policy();
@@ -271,55 +227,26 @@ impl DbClient {
     }
 
     pub fn get_with_retry(&mut self, key:&str, rp:&mut RetryPolicy) -> Option<String> {
-
-        // let mut done = false;
-        // let mut result:Option<String> = None;
-        //
-        // self.retry_policy.reset();
-        //
-        // while !done {
-        //     //let raw_data = self.get_raw(key);
-        //     result =
-                match self.get_raw(key, rp) {
-                    Ok(ref d) if d == "END\r\n" => {
-                        None
-                    },
-                    Ok(d) => {
-                        let s:Vec<&str> = d.split("\r\n").collect();
-                        Some(s[1].to_string())
-                    },
-                    Err(e) => {
-                        error!("error: {}", e);
-                        None
-                    }
-                }
-        //
-        //     trace!("result: {:?}", result);
-        //
-        //     if result.is_some(){
-        //         done = true;
-        //     }else{
-        //         trace!("got error");
-        //         if self.retry_policy.should_retry() {
-        //             warn!("reconnecting... ({})", self.retry_policy.tried());
-        //             self.connect();
-        //             thread::sleep_ms(self.retry_policy.delay());
-        //             //continue;
-        //
-        //         }else{
-        //             warn!("give up.");
-        //             done = true;
-        //         }
-        //     }
-        // }
-        //
-        // result
+        match self.get_raw(key, rp) {
+            Ok(ref d) if d == "END\r\n" => {
+                None
+            },
+            Ok(d) => {
+                let s:Vec<&str> = d.split("\r\n").collect();
+                Some(s[1].to_string())
+            },
+            Err(e) => {
+                error!("error: {}", e);
+                None
+            }
+        }
     }
 
     pub fn del(&mut self, key:&str) -> DbcResult {
         let stream = self.stream.borrow_mut();
         let mut stream = stream.as_ref().unwrap();
         let cmd = format!("del {}", key);
+        //let cmd = "del ".to_string() + key;
         let _ = stream.write(cmd.as_bytes());
         let mut buff = vec![0u8; 512];
         match stream.read(&mut buff){
@@ -354,6 +281,7 @@ mod tests {
     //use super::NoRetry;
     use rand::random;
     use super::test::Bencher;
+    use time;
 
     trait DbClientNoRetry {
         fn get_nop(&mut self, key:&str) -> Option<String>;
@@ -391,7 +319,7 @@ mod tests {
     }
     
     #[bench]
-    fn bench_set_n_get(b: &mut Bencher){
+    fn bench_set(b: &mut Bencher){
         let mut dbc = get_db();
         
         dbc.connect().ok().expect("cannot connect to remote db for testing.");
@@ -400,5 +328,28 @@ mod tests {
            dbc.set(&*rand_string(10), &*rand_string(20));
         });
     }
+    
+    #[bench]
+    fn bench_get(b: &mut Bencher){
+        let mut dbc = get_db();
+        
+        dbc.connect().ok().expect("cannot connect to remote db for testing.");
+        
+        b.iter(||{
+           dbc.get(&*rand_string(10));
+        });
+    }
+    
+    #[bench]
+    fn bench_del(b: &mut Bencher){
+        let mut dbc = get_db();
+        
+        dbc.connect().ok().expect("cannot connect to remote db for testing.");
+        
+        b.iter(||{
+           dbc.del(&*rand_string(10));
+        });
+    }
+    
 
 }
