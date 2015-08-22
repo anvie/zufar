@@ -233,12 +233,20 @@ impl Db {
                     // try remove from rocks
                     let mut wtr = Vec::with_capacity(4);
                     wtr.write_u32::<LittleEndian>(hash_key).unwrap();
-                    self.rocksdb.delete(&*wtr).unwrap();
-                    
-                    if self._disk_load > 0 {
-                        self._disk_load = self._disk_load - 1;
-                    }
 
+                    match self.rocksdb.get(&*wtr){
+                        RocksDBResult::Some(_) => {
+                            self.rocksdb.delete(&*wtr).unwrap();
+
+                            if self._disk_load > 0 {
+                                self._disk_load = self._disk_load - 1;
+                            }
+
+                            return 1;
+                        },
+                        _ => ()
+                    }
+                    
                     return 0;
                 }
            }

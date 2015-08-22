@@ -325,7 +325,8 @@ mod tests {
         dbc.connect().ok().expect("cannot connect to remote db for testing.");
         
         b.iter(||{
-           dbc.set(&*rand_string(10), &*rand_string(20));
+           let kv = rand_string(20);
+           dbc.set(&*kv, &*kv);
         });
     }
     
