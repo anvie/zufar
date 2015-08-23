@@ -48,10 +48,12 @@ impl InternodeService {
     pub fn start(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>){
 
 
-        let (my_node_address, my_api_address, seeds) = {
+        //let (my_node_address /*, my_api_address, seeds*/) = {
+        let my_node_address = {
             //let info = info.clone();
             let info = info.lock().unwrap();
-            (info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
+            //(info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
+            info.my_node_address.clone()
         };
 
         // join the network
@@ -304,9 +306,9 @@ impl InternodeService {
                     let my_guid:u32;
 
                     {
-                        trace!("acquire lock for `info` in check network health");
+                        //trace!("acquire lock for `info` in check network health");
                         let info = info.lock().unwrap();
-                        trace!("acquire lock for `info` in check network health ---> acquired.");
+                        //trace!("acquire lock for `info` in check network health ---> acquired.");
                         my_guid = info.my_guid;
                         routing_tables = (&info.routing_tables).clone();
                     }
@@ -385,9 +387,9 @@ impl InternodeService {
                 let _ = stream.write(b"|/ State=Normal/Leaving/Joining/Moving\r\n");
                 let _ = stream.write(b"--  Address                Load        GUID                           Rack\r\n");
 
-                trace!("acquire `info` lock for getting status");
+                //trace!("acquire `info` lock for getting status");
                 let info = self.info.lock().expect("cannot acquire lock for info");
-                trace!("acquire `info` lock for getting status --> acquired.");
+                //trace!("acquire `info` lock for getting status --> acquired.");
 
                 // me first
                 // trace!("send tx");
@@ -617,7 +619,7 @@ impl InternodeService {
             }
         };
 
-        trace!("acquire info lock for get_rt()");
+        //trace!("acquire info lock for get_rt()");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
         match rts.iter().find(|r| *r.node_address() == socket_ip_address){
@@ -627,7 +629,7 @@ impl InternodeService {
     }
 
     fn get_rt_by_node_address(&self, node_address: &str) -> Option<RoutingTable> {
-        trace!("acquire info lock for get_rt_by_node_address()");
+        //trace!("acquire info lock for get_rt_by_node_address()");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
         match rts.iter().find(|r| *r.node_address() == node_address.to_string()){
@@ -637,7 +639,7 @@ impl InternodeService {
     }
 
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
-        trace!("acquire info lock for get_rt_by_guid()");
+        //trace!("acquire info lock for get_rt_by_guid()");
         let info = self.info.lock().unwrap();
         let rts = &info.routing_tables;
 
@@ -648,9 +650,9 @@ impl InternodeService {
     }
 
     fn node_index(&self, id:u32) -> i32 {
-        trace!("acquire info lock for node_index()");
+        //trace!("acquire info lock for node_index()");
         let info = self.info.lock().unwrap();
-        trace!("acquire info lock for node_index() --> acquired");
+        //trace!("acquire info lock for node_index() --> acquired");
         let rts = &info.routing_tables;
         let mut it = rts.iter();
         match it.position(|p| p.guid() == id){

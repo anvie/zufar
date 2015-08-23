@@ -59,7 +59,7 @@ macro_rules! speed_track {
                 }
             }
 
-            trace!("  last op: {}, ts.sec: {}, rps: {}", spm.last_op, ts.sec, spm.rps);
+            //trace!("  last op: {}, ts.sec: {}, rps: {}", spm.last_op, ts.sec, spm.rps);
 
             spm.last_op = ts.sec;
         }
@@ -132,12 +132,12 @@ impl ApiService {
                     let mut rps:usize = 1;
                     thread::sleep_ms(10000 * (rps as u32));
                     {
-                        trace!("try to acquire lock for `speed_meter` in flusher");
+                        //trace!("try to acquire lock for `speed_meter` in flusher");
                         //let mut api_service = api_service.lock().unwrap();
                         
                         let speed_meter = speed_meter.lock().unwrap();
                         
-                        trace!("try to acquire lock for `speed_meter` in flusher --> acquired.");
+                        //trace!("try to acquire lock for `speed_meter` in flusher --> acquired.");
                         rps = speed_meter.rps;
                         
                         debug!("   rps: {}", rps);
@@ -218,9 +218,9 @@ impl ApiService {
         }
 
         let (my_guid, rts_count) = {
-            trace!("trying to acquire lock for `info` in handle_packet");
+            //trace!("trying to acquire lock for `info` in handle_packet");
             let info = self.info.lock().expect("cannot acquire lock for info");
-            trace!("trying to acquire lock for `info` in handle_packet --> acquired.");
+            //trace!("trying to acquire lock for `info` in handle_packet --> acquired.");
             //let inode = inode.lock().unwrap();
             let rts = &info.routing_tables;
             (info.my_guid, rts.len())
@@ -598,9 +598,9 @@ impl ApiService {
     }
 
     pub fn get_rt_by_guid(&self, guid: u32) -> Option<RoutingTable> {
-        trace!("trying to acquire lock for `info` in get_rt_by_guid in api.");
+        //trace!("trying to acquire lock for `info` in get_rt_by_guid in api.");
         let info = self.info.lock().unwrap();
-        trace!("trying to acquire lock for `info` in get_rt_by_guid in api --> acquired.");
+        //trace!("trying to acquire lock for `info` in get_rt_by_guid in api --> acquired.");
         let rts = &info.routing_tables;
         match rts.iter().find(|&r| r.guid() == guid){
             Some(rt) => Some(rt.clone()),
