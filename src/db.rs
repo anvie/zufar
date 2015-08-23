@@ -11,7 +11,6 @@ use std::path::Path;
 
 use std::fs::OpenOptions;
 use std::cell::UnsafeCell;
-//use std::rc::Rc;
 
 
 use time;
@@ -274,10 +273,6 @@ impl Db {
 
             for (k, v) in iter {
 
-                //println!("flushing k: {:?}, v: {:?}", k, v);
-
-                //let mut writer = BufWriter::new(&self.fstore);
-
                 // format: [VERSION]|[KEY-HASH]|[CONTENT]
                 let _ = self.fstore.write_all(format!("1|{}|{}\n", k, String::from_utf8(v.clone()).unwrap()).as_bytes());
 
@@ -414,7 +409,6 @@ mod tests {
         b.iter(|| {
             let k = format!("k-{}", rand_string(10));
             let v = format!("v-{}", rand_string(20));
-            //println!("k: {}, v: {}", k, v);
             db.insert(k.as_bytes(), v.as_bytes());
         })
     }
@@ -424,8 +418,6 @@ mod tests {
         let mut db = Db::new(&*test_path());
         b.iter(|| {
             let k = format!("k-{}", rand_string(10));
-            //let v = format!("v-{}", rand_string(20));
-            //println!("k: {}, v: {}", k, v);
             db.get(k.as_bytes());
         })
     }

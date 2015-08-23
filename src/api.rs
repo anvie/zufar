@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 //use std::net::Shutdown;
 use std::collections::HashMap;
 use std::net::TcpListener;
-use std::sync::mpsc::{Receiver, Sender};
+//use std::sync::mpsc::{Receiver, Sender};
 //use nix::sys::signal;
 
 
@@ -28,15 +28,9 @@ static ERROR:&'static [u8] = b"ERROR\r\n";
 
 pub struct ApiService {
     db: Arc<Mutex<Db>>,
-    //rx: Receiver<u32>,
-    //rts_count: usize,
-    //pub me_state: RefCell<Option<MeState>>,
     crc32: Crc32,
-    // inode: Arc<Mutex<InternodeService>>,
     info: Arc<Mutex<cluster::Info>>,
     db_client_cache: HashMap<u32, DbClient>,
-    // _rps: usize,
-    // _last_op: i64
 }
 
 // static mut global_db:Option<Db> = None;

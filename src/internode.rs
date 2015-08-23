@@ -7,7 +7,7 @@ use std::io::prelude::*;
 //use std::error;
 use std::str;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Receiver, Sender};
+//use std::sync::mpsc::{Receiver, Sender};
 //use std::cell::RefCell;
 
 
@@ -24,8 +24,6 @@ pub struct InternodeService {
     the_encd: encd::BytesEncoderDecoder,
     info: Arc<Mutex<cluster::Info>>,
     db: Arc<Mutex<Db>>,
-    // tx:Sender<String>,
-    // rx:Receiver<String>
 }
 
 type ZResult = Result<i32, &'static str>;
@@ -40,19 +38,14 @@ impl InternodeService {
             the_encd: encd::BytesEncoderDecoder::new(),
             info: info,
             db: db
-            // tx: tx,
-            // rx: rx
         }
     }
 
     pub fn start(info:Arc<Mutex<cluster::Info>>, db:Arc<Mutex<Db>>){
 
 
-        //let (my_node_address /*, my_api_address, seeds*/) = {
         let my_node_address = {
-            //let info = info.clone();
             let info = info.lock().unwrap();
-            //(info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
             info.my_node_address.clone()
         };
 
@@ -83,10 +76,6 @@ impl InternodeService {
                             Ok(count) => {
 
                                 let _self = InternodeService::new(info.clone(), db.clone());
-
-                                // trace!("acquire lock for `self` in main loop");
-                                // let _self = _self.lock().expect("cannot lock");
-                                // trace!("acquire lock for `self` in main loop --> acquired.");
 
                                 let data = _self.the_encd.decode(&buff[0..count])
                                     .ok().expect("cannot decode data");
@@ -182,7 +171,6 @@ impl InternodeService {
         }
         
         let (my_node_address, my_api_address, seeds) = {
-            //let info = info.clone();
             let info = info.lock().unwrap();
             (info.my_node_address.clone(), info.my_api_address.clone(), info.seeds.clone())
         };
@@ -391,24 +379,6 @@ impl InternodeService {
                 let info = self.info.lock().expect("cannot acquire lock for info");
                 //trace!("acquire `info` lock for getting status --> acquired.");
 
-                // me first
-                // trace!("send tx");
-                // self.tx.send("info".to_string()).expect("cannot send tx to info");
-                // trace!("recv rx");
-                // let data = match self.rx.try_recv(){
-                //     Ok(d) => d,
-                //     Err(e) => {
-                //         error!("cannot recv data from channel, {}", e);
-                //         return Err("error");
-                //     }
-                // };
-                // trace!("received: {}", data);
-                // 
-                // let s:Vec<&str> = data.split("|").collect();
-                // 
-                // let mem_load:usize = s[0].parse().expect("cannot get memory load");
-                // let disk_load:usize = s[1].parse().expect("cannot get disk load");
-                
                 let stat = {
                     let mut db = self.db.lock().expect("cannot acquire lock for `db` in get status");
                     &db.stat()
@@ -443,17 +413,6 @@ impl InternodeService {
 
             },
             "info" => {
-
-                // trace!("send `info` via tx");
-                // self.tx.send("info".to_string()).unwrap();
-                // trace!("recv `info` via rx");
-                // let data = self.rx.recv().unwrap();
-                // trace!("got data from `info` via rx");
-
-                // let s:Vec<&str> = data.split("|").collect();
-                // 
-                // let load:usize = s[0].parse().unwrap();
-                // let disk_load:usize = s[1].parse().unwrap();
                 
                 let stat = {
                     let mut db = self.db.lock().expect("cannot acquire lock for `db` in get info");
@@ -669,7 +628,6 @@ impl InternodeService {
 
     fn generate_guid(&self) -> u32 {
         let mut gid = self.my_guid + 1;
-        //let mut done = false;
         while self.is_node_registered(gid) {
             gid = gid + 1;
         }

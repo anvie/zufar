@@ -24,7 +24,7 @@ extern crate rocksdb;
 //use std::thread;
 use std::io::prelude::*;
 use std::fs::File;
-use std::sync::mpsc::channel;
+//use std::sync::mpsc::channel;
 //use std::sync::mpsc::{Receiver, Sender};
 //use std::net::{TcpStream, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -51,7 +51,7 @@ use api::ApiService;
 use internode::InternodeService;
 //use cluster;
 use db::Db;
-
+use node::NodeClient;
 
 
 
@@ -68,14 +68,10 @@ Options:
   --version             Show version.
 ", arg_host: Option<String>, arg_port: Option<i32>);
 
-use node::{NodeClient};
-//use std::thread;
 
 fn main() {
 
     env_logger::init().unwrap();
-
-
 
     let args: Args = Args::docopt().decode().unwrap_or_else(|e| e.exit());
     //println!("{:?}", args);
@@ -94,8 +90,6 @@ fn main() {
 
         let _:Option<u8> = node.dispatch(&mut |_node, stream| {
             let _ = stream.write(b"v1|status|0");
-            //thread::sleep_ms(100);
-            //let mut buff = [0u8; 1024];
             let mut buff = String::new();
             let _ = stream.read_to_string(&mut buff);
             println!("{}", buff);
@@ -172,12 +166,6 @@ fn main() {
         &data_dir)));
         
     let db = Arc::new(Mutex::new(Db::new(&data_dir)));
-    // 
-    // let (tx_inode, rx_inode) = channel();
-    // let (tx_api, rx_api) = channel();
-
-    //let inode = InternodeService::new(info.clone(), db.clone());
-    //let api_service = ApiService::new(info.clone(), db.clone());
 
     InternodeService::start(info.clone(), db.clone());
 
