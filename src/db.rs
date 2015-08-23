@@ -226,30 +226,40 @@ impl Db {
 
     pub fn del(&mut self, key:&[u8]) -> usize {
         let hash_key = self.crc32.crc(key);
+        trace!("trying to remove from eden...");
         if self.memtable_eden.remove(&hash_key).is_none(){
+           trace!("not found, trying to remove from old");
            unsafe {
-                if (*self.memtable.get()).remove(&hash_key).is_none(){
-
-                    // try remove from rocks
-                    let mut wtr = Vec::with_capacity(4);
-                    wtr.write_u32::<LittleEndian>(hash_key).unwrap();
-
-                    match self.rocksdb.get(&*wtr){
-                        RocksDBResult::Some(_) => {
-                            self.rocksdb.delete(&*wtr).unwrap();
-
-                            if self._disk_load > 0 {
-                                self._disk_load = self._disk_load - 1;
-                            }
-
-                            return 1;
-                        },
-                        _ => ()
-                    }
-                    
-                    return 0;
-                }
+                (*self.memtable.get()).remove(&hash_key).unwrap();
            }
+
+            trace!("not found, trying to remove from rocks");
+
+            // try remove from rocks
+            let mut wtr = Vec::with_capacity(4);
+            wtr.write_u32::<LittleEndian>(hash_key).unwrap();
+
+
+            match self.rocksdb.get(&*wtr){
+                RocksDBResult::Some(_) => {
+
+                    trace!("deleting from rocks");
+
+                    self.rocksdb.delete(&*wtr).unwrap();
+
+                    if self._disk_load > 0 {
+                        self._disk_load = self._disk_load - 1;
+                    }
+
+                    return 1;
+                },
+                _ => ()
+            }
+
+            trace!("not found in rocks");
+
+            return 0;
+
         }
         return 1;
     }

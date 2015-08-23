@@ -147,12 +147,12 @@ impl DbClient {
 
         if s.is_some() {
             let mut stream = s.as_ref().unwrap();
-            let data = format!("set {} 0 0 {} \r\n", key, v.len());
+            let data = format!("set {} 0 0 {} \r\n{}", key, v.len(), v);
             let _ = stream.write(data.as_bytes());
 
-            let _ = stream.write(v.as_bytes());
+            //let _ = stream.write(v.as_bytes());
             let _ = stream.flush();
-            let _ = stream.read(&mut [0u8; 512]);
+            let _ = stream.read(&mut [0u8; 20]);
         }
     }
 
