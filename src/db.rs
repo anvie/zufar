@@ -230,15 +230,14 @@ impl Db {
         if self.memtable_eden.remove(&hash_key).is_none(){
            trace!("not found, trying to remove from old");
            unsafe {
-                (*self.memtable.get()).remove(&hash_key).unwrap();
+                let _ = (*self.memtable.get()).remove(&hash_key);
            }
 
-            trace!("not found, trying to remove from rocks");
+            trace!("remove also from rocks if any");
 
             // try remove from rocks
             let mut wtr = Vec::with_capacity(4);
             wtr.write_u32::<LittleEndian>(hash_key).unwrap();
-
 
             match self.rocksdb.get(&*wtr){
                 RocksDBResult::Some(_) => {
