@@ -1,7 +1,6 @@
 # ZufarDB
 
-Decentralized key-value store that support auto-sharding for scalability and semi-persistent
-durability, where the data is asynchronously transfered from memory to disk backed by [RocksDB](http://rocksdb.org/).
+Semi-persistent decentralized key-value store that support auto-sharding, where the data is asynchronously transfered from memory to disk. Low level data store is efficient and optimized using [RocksDB](http://rocksdb.org/).
 
 ## Features
 
